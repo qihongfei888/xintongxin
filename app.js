@@ -1,59 +1,49 @@
 (function () {
   console.log('🚀 应用启动中...');
   
-  // 动态加载 Supabase SDK - 尝试多个CDN
-  function loadSupabaseSDK() {
-    return new Promise((resolve) => {
-      // 如果已经存在，直接返回
-      if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-        console.log('✅ Supabase SDK 已存在');
-        resolve(true);
-        return;
-      }
-      
-      // CDN列表
-      const cdns = [
-        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
-        'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js',
-        'https://cdnjs.cloudflare.com/ajax/libs/supabase/2.0.0/supabase.min.js'
-      ];
-      
-      let currentIndex = 0;
-      
-      function tryLoadCDN() {
-        if (currentIndex >= cdns.length) {
-          console.error('❌ 所有CDN都加载失败');
-          resolve(false);
-          return;
-        }
-        
-        const script = document.createElement('script');
-        script.src = cdns[currentIndex];
-        console.log(`⏳ 尝试加载CDN ${currentIndex + 1}/${cdns.length}`);
-        
-        script.onload = function() {
-          console.log(`✅ Supabase SDK 从CDN ${currentIndex + 1}加载成功`);
-          resolve(true);
-        };
-        
-        script.onerror = function() {
-          console.error(`❌ CDN ${currentIndex + 1}加载失败`);
-          currentIndex++;
-          tryLoadCDN();
-        };
-        
-        document.head.appendChild(script);
-      }
-      
-      tryLoadCDN();
-    });
-  }
-  
-  // 初始化 Supabase
+  // 初始化 Supabase - 优先使用本地文件，失败则尝试CDN
   window.initSupabaseClient = async function() {
     console.log('🔄 开始初始化Supabase...');
-    const loaded = await loadSupabaseSDK();
-    if (loaded && typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+    
+    // 1. 检查本地文件是否已加载
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+      console.log('✅ Supabase SDK 已由本地文件加载');
+    } else {
+      // 2. 本地文件未加载，尝试CDN
+      console.log('⏳ 本地SDK未找到，尝试CDN加载...');
+      
+      const cdns = [
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+        'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js'
+      ];
+      
+      let loaded = false;
+      for (let i = 0; i < cdns.length; i++) {
+        try {
+          console.log(`⏳ 尝试加载CDN ${i + 1}/${cdns.length}`);
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = cdns[i];
+            script.onload = () => resolve(true);
+            script.onerror = () => reject(false);
+            document.head.appendChild(script);
+          });
+          console.log(`✅ Supabase SDK 从CDN ${i + 1}加载成功`);
+          loaded = true;
+          break;
+        } catch (e) {
+          console.error(`❌ CDN ${i + 1}加载失败`);
+        }
+      }
+      
+      if (!loaded) {
+        console.error('❌ 所有CDN都加载失败');
+        return false;
+      }
+    }
+    
+    // 3. 初始化客户端
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
       try {
         const supabaseUrl = 'https://cuipqszkjsxixmbrvwdg.supabase.co';
         const supabaseKey = 'sb_publishable_kV8fI-YCfPQy2m2akpOdXg_JXrRurE9';

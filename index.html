@@ -18,39 +18,7 @@
     }
   </style>
   <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Ma+Shan+Zheng&display=swap" rel="stylesheet" onerror="this.remove()">
-  <!-- Supabase SDK（可选，不影响系统运行） -->
-  <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js" onerror="this.remove()"></script>
-  <script>
-    // Supabase 配置 - 等待SDK加载完成
-    let supabase = null;
-    
-    function initSupabase() {
-      try {
-        // 检查全局变量
-        if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-          const supabaseUrl = 'https://cuipqszkjsxixmbrvwdg.supabase.co';
-          const supabaseKey = 'sb_publishable_kV8fI-YCfPQy2m2akpOdXg_JXrRurE9';
-          supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-          console.log('✅ Supabase初始化成功');
-          return true;
-        } else {
-          console.log('⏳ Supabase SDK未加载，稍后重试...');
-          return false;
-        }
-      } catch (e) {
-        console.error('❌ Supabase初始化失败:', e);
-        return false;
-      }
-    }
-    
-    // 立即尝试初始化
-    if (!initSupabase()) {
-      // 如果失败，等待页面加载完成后重试
-      window.addEventListener('load', function() {
-        setTimeout(initSupabase, 1000);
-      });
-    }
-  </script>
+  <!-- Supabase SDK 由 app.js 动态加载 -->
 </head>
 <body>
   <!-- 内联图标（确保任意电脑均能正常显示，不依赖 emoji/网络） -->

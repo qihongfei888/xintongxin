@@ -19,18 +19,22 @@
   </style>
   <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Ma+Shan+Zheng&display=swap" rel="stylesheet" onerror="this.remove()">
   <!-- Supabase SDK（可选，不影响系统运行） -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="this.remove()"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onerror="this.remove()"></script>
   <script>
     // Supabase 配置
     let supabase = null;
     try {
-      if (typeof createClient !== 'undefined') {
+      // 使用正确的全局变量名
+      if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
         const supabaseUrl = 'https://cuipqszkjsxixmbrvwdg.supabase.co';
         const supabaseKey = 'sb_publishable_kV8fI-YCfPQy2m2akpOdXg_JXrRurE9';
-        supabase = createClient(supabaseUrl, supabaseKey);
+        supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+        console.log('Supabase初始化成功');
+      } else {
+        console.log('Supabase SDK未加载，将使用本地存储');
       }
     } catch (e) {
-      console.log('Supabase初始化失败，继续使用本地存储');
+      console.log('Supabase初始化失败，继续使用本地存储:', e);
     }
   </script>
 </head>

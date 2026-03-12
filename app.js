@@ -935,15 +935,20 @@
         this.renderHonor();
         this.renderStore();
         
-        // 启用实时同步（本地）
-        this.enableAutoSyncRealtime();
-        
-        // 初始化照片存储
-        this.initPhotoStorage();
+        // 初始化照片存储（添加错误处理）
+        try {
+          this.initPhotoStorage();
+        } catch (e) {
+          console.error('照片存储初始化失败:', e);
+        }
         
         // 每小时重置GitHub API计数
         setInterval(() => {
-          this.resetGithubApiCounter();
+          try {
+            this.resetGithubApiCounter();
+          } catch (e) {
+            console.error('重置API计数器失败:', e);
+          }
         }, 60 * 60 * 1000);
         
         console.log('应用初始化完成');
@@ -3280,22 +3285,26 @@
     
     // 初始化照片存储
     initPhotoStorage() {
-      // 从localStorage读取API调用计数
-      const savedCount = localStorage.getItem('github_api_calls');
-      if (savedCount) {
-        this.photoStorage.githubApiCalls = parseInt(savedCount, 10) || 0;
+      try {
+        // 从localStorage读取API调用计数
+        const savedCount = localStorage.getItem('github_api_calls');
+        if (savedCount) {
+          this.photoStorage.githubApiCalls = parseInt(savedCount, 10) || 0;
+        }
+        
+        // 加载GitHub Token
+        this.loadGithubToken();
+        
+        // 检查是否需要切换到R2
+        this.checkStorageProvider();
+        
+        // 更新界面显示
+        this.updatePhotoStorageStatus();
+        
+        console.log(`照片存储提供商: ${this.photoStorage.currentProvider}, GitHub API调用: ${this.photoStorage.githubApiCalls}/${this.photoStorage.githubApiLimit}`);
+      } catch (e) {
+        console.error('初始化照片存储失败:', e);
       }
-      
-      // 加载GitHub Token
-      this.loadGithubToken();
-      
-      // 检查是否需要切换到R2
-      this.checkStorageProvider();
-      
-      // 更新界面显示
-      this.updatePhotoStorageStatus();
-      
-      console.log(`照片存储提供商: ${this.photoStorage.currentProvider}, GitHub API调用: ${this.photoStorage.githubApiCalls}/${this.photoStorage.githubApiLimit}`);
     },
     
     // 检查存储提供商

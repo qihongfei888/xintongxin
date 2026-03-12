@@ -338,20 +338,21 @@
             const syncResult = await this.syncFromCloud();
             if (syncResult) {
               console.log('从云端同步成功，使用云端数据');
+              // 同步成功后立即加载用户数据
+              this.loadUserData();
             } else {
               console.log('云端数据较旧或没有数据，使用本地数据');
+              this.loadUserData();
             }
           } catch (e) {
             console.error('云端同步失败，使用本地数据:', e);
+            this.loadUserData();
           }
           
-          // 加载用户数据（无论同步成功与否都加载）
-          this.loadUserData();
-          
-          // 显示应用界面（不再调用syncData，避免重复同步）
+          // 显示应用界面
           this.showApp();
           
-          // 启用实时同步和自动同步
+          // 启用实时同步和自动同步（减少频次）
           this.enableRealtimeSync();
           this.enableAutoSync();
           
@@ -666,11 +667,11 @@
       const now = Date.now();
       const timeSinceLastSync = now - this.lastSyncAttempt;
       
-      // 条件：距离上次同步超过2小时 或 累积了50个变更 或 用户主动退出
+      // 条件：距离上次同步超过4小时 或 累积了100个变更
       const shouldSyncToCloud = 
         navigator.onLine && 
         this.dataChanged && 
-        (timeSinceLastSync >= 2 * 60 * 60 * 1000 || this.pendingChanges >= 50);
+        (timeSinceLastSync >= 4 * 60 * 60 * 1000 || this.pendingChanges >= 100);
       
       if (shouldSyncToCloud) {
         console.log('满足云端同步条件，开始同步...');
@@ -702,12 +703,16 @@
       
       try {
         const userData = getUserData();
+        const now = new Date().toISOString();
+        
+        // 更新数据的最后修改时间
+        userData.lastModified = now;
         
         // 1. 优先使用本地存储
         try {
           localStorage.setItem(`class_pet_local_${this.currentUserId}`, JSON.stringify({
             data: userData,
-            timestamp: new Date().toISOString()
+            timestamp: now
           }));
           console.log('数据已存储到本地');
         } catch (localError) {
@@ -721,13 +726,15 @@
             .upsert({
               id: this.currentUserId,
               data: userData,
-              updated_at: new Date().toISOString()
+              updated_at: now
             });
           
           if (error) {
             console.error('Supabase同步失败:', error);
           } else {
             console.log('数据已同步到Supabase云存储');
+            // 同步成功后更新本地数据的lastModified
+            setUserData(userData);
           }
         }
       } catch (e) {
@@ -766,6 +773,8 @@
             const localTimestamp = localData.lastModified || '1970-01-01T00:00:00.000Z';
             const cloudTimestamp = data.updated_at || '1970-01-01T00:00:00.000Z';
             
+            console.log(`时间戳比较 - 本地: ${localTimestamp}, 云端: ${cloudTimestamp}`);
+            
             // 比较时间戳，选择较新的数据
             if (cloudTimestamp > localTimestamp) {
               // 更新本地数据
@@ -785,13 +794,22 @@
                 console.error('本地备份失败:', e);
               }
               
-              // 加载更新后的数据到界面
-              this.loadUserData();
-              
               console.log('从Supabase云存储同步成功，数据已更新');
               syncSuccess = true;
             } else {
               console.log('本地数据已是最新，无需同步');
+              // 即使本地数据更新，也要确保云端有数据
+              if (this.dataChanged) {
+                console.log('本地数据有变更，同步到云端');
+                await this.syncToCloud();
+              }
+            }
+          } else {
+            // 云端没有数据，上传本地数据
+            console.log('云端没有数据，上传本地数据');
+            const localData = getUserData();
+            if (Object.keys(localData).length > 0) {
+              await this.syncToCloud();
             }
           }
         }
@@ -815,9 +833,6 @@
                   lastModified: parsedData.timestamp
                 };
                 setUserData(updatedData);
-                
-                // 加载更新后的数据到界面
-                this.loadUserData();
                 
                 console.log('从本地备份加载成功，数据已更新');
                 syncSuccess = true;
@@ -843,15 +858,15 @@
         this.autoSyncInterval = null;
       }
       
-      // 每2小时检查一次是否需要同步
+      // 每4小时检查一次是否需要同步（减少频次）
       this.autoSyncInterval = setInterval(async () => {
         // 只有当网络可用且有数据变更时才同步
         if (navigator.onLine && this.dataChanged) {
           const now = Date.now();
           const timeSinceLastSync = now - this.lastSyncAttempt;
           
-          // 只有距离上次同步超过2小时，或者累积了50个变更，才进行云端同步
-          if (timeSinceLastSync >= 2 * 60 * 60 * 1000 || this.pendingChanges >= 50) {
+          // 只有距离上次同步超过4小时，或者累积了100个变更，才进行云端同步
+          if (timeSinceLastSync >= 4 * 60 * 60 * 1000 || this.pendingChanges >= 100) {
             console.log('自动同步：满足条件，开始云端同步');
             await this.syncData();
           } else {
@@ -859,7 +874,7 @@
             this.saveUserData();
           }
         }
-      }, 2 * 60 * 60 * 1000); // 每2小时检查一次
+      }, 4 * 60 * 60 * 1000); // 每4小时检查一次
     },
     
     // 禁用自动同步

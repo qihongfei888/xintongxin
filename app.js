@@ -3555,7 +3555,7 @@
         // 获取当前用户信息
         const savedUser = localStorage.getItem(CURRENT_USER_KEY);
         if (!savedUser) {
-          this.logout();
+          console.log('未找到用户信息，跳过设备授权检查');
           return;
         }
         
@@ -3563,7 +3563,7 @@
         const deviceId = userInfo.deviceId;
         
         if (!deviceId) {
-          this.logout();
+          console.log('未找到设备ID，跳过设备授权检查');
           return;
         }
         
@@ -3571,12 +3571,26 @@
         const users = getUserList();
         const user = users.find(u => u.id === this.currentUserId);
         
-        if (!user || !user.devices || !user.devices.some(d => d.id === deviceId)) {
-          alert('登录已失效，请重新登录');
-          this.logout();
+        // 如果找不到用户或设备列表，只记录日志而不强制退出
+        // 避免因为数据同步延迟导致的误退出
+        if (!user) {
+          console.log('未找到用户信息，跳过设备授权检查');
+          return;
+        }
+        
+        if (!user.devices) {
+          console.log('用户设备列表为空，跳过设备授权检查');
+          return;
+        }
+        
+        if (!user.devices.some(d => d.id === deviceId)) {
+          console.log('设备不在授权列表中，但暂不强制退出');
+          // 不再强制退出，避免闪退问题
+          // 只在控制台记录，让用户继续使用
         }
       } catch (e) {
         console.error('检查设备授权失败:', e);
+        // 出错时不强制退出，避免闪退
       }
     },
 

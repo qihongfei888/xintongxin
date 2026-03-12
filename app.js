@@ -1,5 +1,5 @@
 (function () {
-  // 动态加载 Supabase SDK
+  // 动态加载 Supabase SDK - 尝试多个CDN
   function loadSupabaseSDK() {
     return new Promise((resolve) => {
       // 如果已经存在，直接返回
@@ -9,18 +9,41 @@
         return;
       }
       
-      // 动态加载脚本
-      const script = document.createElement('script');
-      script.src = 'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js';
-      script.onload = function() {
-        console.log('✅ Supabase SDK 加载成功');
-        resolve(true);
-      };
-      script.onerror = function() {
-        console.error('❌ Supabase SDK 加载失败');
-        resolve(false);
-      };
-      document.head.appendChild(script);
+      // CDN列表
+      const cdns = [
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+        'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/supabase/2.0.0/supabase.min.js'
+      ];
+      
+      let currentIndex = 0;
+      
+      function tryLoadCDN() {
+        if (currentIndex >= cdns.length) {
+          console.error('❌ 所有CDN都加载失败');
+          resolve(false);
+          return;
+        }
+        
+        const script = document.createElement('script');
+        script.src = cdns[currentIndex];
+        console.log(`⏳ 尝试加载CDN ${currentIndex + 1}/${cdns.length}: ${cdns[currentIndex]}`);
+        
+        script.onload = function() {
+          console.log(`✅ Supabase SDK 从CDN ${currentIndex + 1}加载成功`);
+          resolve(true);
+        };
+        
+        script.onerror = function() {
+          console.error(`❌ CDN ${currentIndex + 1}加载失败`);
+          currentIndex++;
+          tryLoadCDN();
+        };
+        
+        document.head.appendChild(script);
+      }
+      
+      tryLoadCDN();
     });
   }
   

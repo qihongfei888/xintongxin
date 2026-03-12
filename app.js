@@ -796,6 +796,14 @@
               syncSuccess = true;
               // 标记数据已加载，避免init中重复加载
               this.dataLoaded = true;
+              // 立即加载更新后的数据到内存
+              this.loadUserData();
+              // 重新渲染界面以显示新数据
+              this.renderDashboard();
+              this.renderStudents();
+              this.renderHonor();
+              this.renderStore();
+              console.log('界面已重新渲染');
             } else {
               console.log('本地数据已是最新，无需同步');
               // 即使本地数据更新，也要确保云端有数据

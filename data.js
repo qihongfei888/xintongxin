@@ -169,6 +169,34 @@ const DEFAULT_MINUS_ITEMS = [
   { name: '未交作业', points: 1 }
 ];
 
+// 默认宠物装扮（10个卡通玩具和装饰）
+const DEFAULT_ACCESSORIES = [
+  { id: 'accessory_crown', name: '金色皇冠', icon: '👑', points: 50, enabled: true },
+  { id: 'accessory_hat', name: '可爱帽子', icon: '🎩', points: 30, enabled: true },
+  { id: 'accessory_bow', name: '粉色蝴蝶结', icon: '🎀', points: 25, enabled: true },
+  { id: 'accessory_star', name: '闪亮星星', icon: '⭐', points: 20, enabled: true },
+  { id: 'accessory_heart', name: '爱心项链', icon: '💝', points: 35, enabled: true },
+  { id: 'accessory_sunglasses', name: '酷炫墨镜', icon: '🕶️', points: 40, enabled: true },
+  { id: 'accessory_flower', name: '美丽花朵', icon: '🌸', points: 20, enabled: true },
+  { id: 'accessory_balloon', name: '彩色气球', icon: '🎈', points: 15, enabled: true },
+  { id: 'accessory_rocket', name: '小火箭', icon: '🚀', points: 45, enabled: true },
+  { id: 'accessory_trophy', name: '小奖杯', icon: '🏆', points: 60, enabled: true }
+];
+
+// 默认商店礼物（10个礼物图标）
+const DEFAULT_PRIZES = [
+  { id: 'prize_chocolate', name: '巧克力', icon: '🍫', cost: 5, stock: 999, enabled: true },
+  { id: 'prize_candy', name: '糖果', icon: '🍬', cost: 3, stock: 999, enabled: true },
+  { id: 'prize_cookie', name: '饼干', icon: '🍪', cost: 4, stock: 999, enabled: true },
+  { id: 'prize_icecream', name: '冰淇淋', icon: '🍦', cost: 8, stock: 999, enabled: true },
+  { id: 'prize_cake', name: '小蛋糕', icon: '🍰', cost: 10, stock: 999, enabled: true },
+  { id: 'prize_toy', name: '小玩具', icon: '🧸', cost: 15, stock: 999, enabled: true },
+  { id: 'prize_sticker', name: '贴纸', icon: '⭐', cost: 2, stock: 999, enabled: true },
+  { id: 'prize_pencil', name: '可爱铅笔', icon: '✏️', cost: 6, stock: 999, enabled: true },
+  { id: 'prize_notebook', name: '小笔记本', icon: '📓', cost: 12, stock: 999, enabled: true },
+  { id: 'prize_surprise', name: '神秘盲盒', icon: '🎁', cost: 20, stock: 999, enabled: true }
+];
+
 // 学生头像选项（动漫风格）
 const AVATAR_OPTIONS = [
   '👦', '👧', '🧒', '👶', '🐱', '🐶', '🐰', '🐻', '🐼', '🦊', '🐨', '🦁', '🐯', '🐸', '🐵',

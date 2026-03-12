@@ -167,8 +167,8 @@ body::before {
 .nav-btn-logout { background: rgba(255,255,255,0.2); }
 .nav-btn-logout:hover { background: rgba(255,255,255,0.4); }
 
-.app-container { max-width: 1400px; margin: 0 auto; padding: 0 16px 40px; }
-#app.app-container { max-width: 1400px; margin: 0 auto; padding: 0 16px 40px; }
+.app-container { max-width: 1400px; margin: 0 auto; padding: 0 16px 40px; display: block !important; min-height: 100vh; background: #FFF5F5 !important; }
+#app.app-container { max-width: 1400px; margin: 0 auto; padding: 0 16px 40px; display: block !important; }
 
 .main-header {
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
@@ -1015,6 +1015,33 @@ body::before {
 .bar-name { font-size: 1.1rem; font-weight: bold; }
 .bar-badges { font-size: 1rem; }
 .bar-stats { font-size: 0.95rem; color: var(--text-muted); }
+
+/* 光荣榜时间周期标签 */
+.honor-period-tabs {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+.honor-period-tab {
+  padding: 8px 20px;
+  border: 2px solid var(--primary);
+  background: #fff;
+  color: var(--primary);
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+.honor-period-tab:hover {
+  background: rgba(255, 107, 107, 0.1);
+  transform: translateY(-2px);
+}
+.honor-period-tab.active {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: #fff;
+  box-shadow: 0 4px 15px var(--shadow);
+}
 
 /* 光荣榜布局 */
 .honor-layout {

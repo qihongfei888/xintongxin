@@ -5,62 +5,75 @@
   window.initSupabaseClient = async function() {
     console.log('🔄 开始初始化Supabase...');
     
-    // 1. 检查本地文件是否已加载
-    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-      console.log('✅ Supabase SDK 已由本地文件加载');
-    } else {
-      // 2. 本地文件未加载，尝试CDN
-      console.log('⏳ 本地SDK未找到，尝试CDN加载...');
-      
-      const cdns = [
-        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
-        'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js'
-      ];
-      
-      let loaded = false;
-      for (let i = 0; i < cdns.length; i++) {
-        try {
-          console.log(`⏳ 尝试加载CDN ${i + 1}/${cdns.length}`);
-          await new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = cdns[i];
-            script.onload = () => resolve(true);
-            script.onerror = () => reject(false);
-            document.head.appendChild(script);
-          });
-          console.log(`✅ Supabase SDK 从CDN ${i + 1}加载成功`);
-          loaded = true;
-          break;
-        } catch (e) {
-          console.error(`❌ CDN ${i + 1}加载失败`);
+    // 检查是否有网络连接
+    if (!navigator.onLine) {
+      console.log('📡 无网络连接，跳过Supabase初始化，使用本地数据');
+      return false;
+    }
+    
+    try {
+      // 1. 检查本地文件是否已加载
+      if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+        console.log('✅ Supabase SDK 已由本地文件加载');
+      } else {
+        // 2. 本地文件未加载，尝试CDN
+        console.log('⏳ 本地SDK未找到，尝试CDN加载...');
+        
+        const cdns = [
+          'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+          'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js'
+        ];
+        
+        let loaded = false;
+        for (let i = 0; i < cdns.length; i++) {
+          try {
+            console.log(`⏳ 尝试加载CDN ${i + 1}/${cdns.length}`);
+            await new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = cdns[i];
+              script.onload = () => resolve(true);
+              script.onerror = () => reject(false);
+              document.head.appendChild(script);
+            });
+            console.log(`✅ Supabase SDK 从CDN ${i + 1}加载成功`);
+            loaded = true;
+            break;
+          } catch (e) {
+            console.error(`❌ CDN ${i + 1}加载失败`);
+          }
+        }
+        
+        if (!loaded) {
+          console.error('❌ 所有CDN都加载失败，使用本地数据');
+          return false;
         }
       }
       
-      if (!loaded) {
-        console.error('❌ 所有CDN都加载失败');
-        return false;
+      // 3. 初始化客户端
+      if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+        try {
+          const supabaseUrl = 'https://cuipqszkjsxixmbrvwdg.supabase.co';
+          const supabaseKey = 'sb_publishable_kV8fI-YCfPQy2m2akpOdXg_JXrRurE9';
+          window.supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+          console.log('✅ Supabase 初始化成功');
+          return true;
+        } catch (e) {
+          console.error('❌ Supabase 初始化失败，使用本地数据:', e);
+          return false;
+        }
       }
+      console.log('⚠️ Supabase SDK未加载，使用本地数据');
+      return false;
+    } catch (e) {
+      console.error('❌ Supabase初始化出错，使用本地数据:', e);
+      return false;
     }
-    
-    // 3. 初始化客户端
-    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-      try {
-        const supabaseUrl = 'https://cuipqszkjsxixmbrvwdg.supabase.co';
-        const supabaseKey = 'sb_publishable_kV8fI-YCfPQy2m2akpOdXg_JXrRurE9';
-        window.supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-        console.log('✅ Supabase 初始化成功');
-        return true;
-      } catch (e) {
-        console.error('❌ Supabase 初始化失败:', e);
-        return false;
-      }
-    }
-    console.log('⚠️ Supabase SDK未加载');
-    return false;
   }
   
-  // 立即开始初始化
-  window.initSupabaseClient();
+  // 立即开始初始化（不等待完成，不阻塞应用）
+  window.initSupabaseClient().catch(e => {
+    console.log('Supabase初始化不影响使用，继续加载应用');
+  });
   
   const STORAGE_KEYS = {
     students: 'class_pet_students',
@@ -767,6 +780,12 @@
     
     // 同步到云存储
     async syncToCloud() {
+      // 无网时不进行云同步
+      if (!navigator.onLine) {
+        console.log('无网络连接，跳过云端同步');
+        return;
+      }
+      
       // 防止重复同步
       if (this.syncing) {
         console.log('正在同步中，跳过重复同步');
@@ -836,6 +855,12 @@
     // 从云存储同步
     async syncFromCloud() {
       if (!this.currentUserId) return false;
+      
+      // 无网时不进行云同步
+      if (!navigator.onLine) {
+        console.log('无网络连接，跳过云端同步');
+        return false;
+      }
       
       // 防止重复同步
       if (this.syncing) {
@@ -1162,7 +1187,15 @@
     getPrizes() {
       const data = getUserData();
       const currentClass = data.classes && this.currentClassId ? data.classes.find(c => c.id === this.currentClassId) : null;
-      return currentClass ? (currentClass.prizes || []) : [];
+      if (currentClass) {
+        if (!currentClass.prizes || currentClass.prizes.length === 0) {
+          // 如果没有奖品，使用默认奖品
+          currentClass.prizes = [...DEFAULT_PRIZES];
+          setUserData(data);
+        }
+        return currentClass.prizes;
+      }
+      return [...DEFAULT_PRIZES];
     },
     getLotteryPrizes() {
       const data = getUserData();
@@ -1295,6 +1328,16 @@
     bindNav() {
       document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.addEventListener('click', () => this.showPage(btn.dataset.page));
+      });
+      
+      // 光荣榜时间周期标签
+      document.querySelectorAll('.honor-period-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.honor-period-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          const period = tab.dataset.period;
+          this.renderHonor(period);
+        });
       });
     },
     showPage(pageId) {
@@ -2438,24 +2481,49 @@
       }
     },
 
-    renderHonor() {
+    renderHonor(period = 'all') {
       const totalStages = this.getTotalStages();
+      const periodTimestamp = this.getPeriodTimestamp(period);
+      
       const list = this.students
-        .map(s => ({
-          ...s,
-          badgeCount: this.getTotalBadgesEarned(s),
-          available: this.getAvailableBadges(s),
-          petStage: s.pet ? (s.pet.stage || 0) : 0
-        }))
+        .map(s => {
+          // 计算该时间段内的积分变化
+          let periodPoints = 0;
+          let periodBadges = 0;
+          
+          if (s.scoreHistory && s.scoreHistory.length > 0) {
+            periodPoints = s.scoreHistory
+              .filter(h => h.time >= periodTimestamp)
+              .reduce((sum, h) => sum + h.delta, 0);
+          }
+          
+          if (s.badges && s.badges.length > 0) {
+            periodBadges = s.badges
+              .filter(b => b.time >= periodTimestamp)
+              .length;
+          }
+          
+          return {
+            ...s,
+            badgeCount: period === 'all' ? this.getTotalBadgesEarned(s) : periodBadges,
+            periodPoints: periodPoints,
+            totalPoints: s.points || 0,
+            available: this.getAvailableBadges(s),
+            petStage: s.pet ? (s.pet.stage || 0) : 0
+          };
+        })
         .sort((a, b) => {
           // 先按徽章数量排序
           const badgeDiff = (b.badgeCount || 0) - (a.badgeCount || 0);
           if (badgeDiff !== 0) return badgeDiff;
-          // 徽章相同则按宠物阶段排序
+          // 徽章相同则按时间段积分排序
+          const periodPointsDiff = (b.periodPoints || 0) - (a.periodPoints || 0);
+          if (periodPointsDiff !== 0) return periodPointsDiff;
+          // 时间段积分相同则按宠物阶段排序
           const stageDiff = (b.petStage || 0) - (a.petStage || 0);
           if (stageDiff !== 0) return stageDiff;
-          // 阶段相同则按积分排序
-          return (b.points || 0) - (a.points || 0);
+          // 阶段相同则按总积分排序
+          return (b.totalPoints || 0) - (a.totalPoints || 0);
         });
       const top3 = list.slice(0, 3);
       const others = list.slice(3);
@@ -2478,7 +2546,7 @@
                 <div class="top3-avatar">${s.avatar || '👦'}</div>
                 <div class="top3-name">${this.escape(s.name)}</div>
                 <div class="top3-badges">${s.badgeCount > 0 ? '🏆'.repeat(Math.min(s.badgeCount, 5)) : ''} ${s.badgeCount}枚</div>
-                <div class="top3-stats">${s.points || 0}分 | 阶段${s.petStage}</div>
+                <div class="top3-stats">${period === 'all' ? s.totalPoints : s.periodPoints}分 | 阶段${s.petStage}</div>
               </div>
             `;
           }).join('')}
@@ -2494,7 +2562,7 @@
               <div class="bar-info">
                 <span class="bar-name">${this.escape(s.name)}</span>
                 <span class="bar-badges">${s.badgeCount > 0 ? '🏆'.repeat(Math.min(s.badgeCount, 3)) : ''} ${s.badgeCount}枚</span>
-                <span class="bar-stats">${s.points || 0}分 | 阶段${s.petStage}</span>
+                <span class="bar-stats">${period === 'all' ? s.totalPoints : s.periodPoints}分 | 阶段${s.petStage}</span>
               </div>
             </div>
           `).join('')}
@@ -2515,6 +2583,8 @@
       const day = 24 * 60 * 60 * 1000;
       
       switch (period) {
+        case 'all':
+          return 0; // 总排名，从0开始
         case 'day':
           return now - day;
         case 'week':
@@ -2524,7 +2594,7 @@
         case 'semester':
           return now - 180 * day;
         default:
-          return now - 7 * day; // 默认一周
+          return 0; // 默认总排名
       }
     },
 
@@ -2717,7 +2787,15 @@
     getAccessories() {
       const data = getUserData();
       const currentClass = data.classes && this.currentClassId ? data.classes.find(c => c.id === this.currentClassId) : null;
-      return currentClass ? (currentClass.accessories || []) : [];
+      if (currentClass) {
+        if (!currentClass.accessories || currentClass.accessories.length === 0) {
+          // 如果没有装扮，使用默认装扮
+          currentClass.accessories = [...DEFAULT_ACCESSORIES];
+          setUserData(data);
+        }
+        return currentClass.accessories;
+      }
+      return [...DEFAULT_ACCESSORIES];
     },
     exchangeAccessoryForStudent(studentId, accessoryIndex) {
       const s = this.students.find(x => x.id === studentId);
@@ -6080,19 +6158,26 @@
           app.currentUserId = user.id;
           app.currentUsername = user.username;
           
-          // 优先从云端同步数据（确保多端数据一致）
-          try {
-            console.log('自动登录时从云端同步数据...');
-            const syncResult = await app.syncFromCloud();
-            if (syncResult) {
-              console.log('从云端同步成功，使用云端数据');
-            } else {
-              console.log('云端数据较旧或没有数据，使用本地数据');
+          // 有网时才尝试从云端同步
+          if (navigator.onLine) {
+            try {
+              console.log('自动登录时从云端同步数据...');
+              const syncResult = await app.syncFromCloud();
+              if (syncResult) {
+                console.log('从云端同步成功，使用云端数据');
+              } else {
+                console.log('云端数据较旧或没有数据，使用本地数据');
+                app.loadUserData();
+                app.dataLoaded = true;
+              }
+            } catch (e) {
+              console.error('云端同步失败，使用本地数据:', e);
               app.loadUserData();
               app.dataLoaded = true;
             }
-          } catch (e) {
-            console.error('云端同步失败，使用本地数据:', e);
+          } else {
+            // 无网时直接使用本地数据
+            console.log('无网络连接，直接使用本地数据');
             app.loadUserData();
             app.dataLoaded = true;
           }
@@ -6169,7 +6254,9 @@
             createdAt: new Date().toISOString(),
             stagePoints: 20,
             totalStages: 10,
-            broadcastMessages: ['欢迎来到童心宠伴！🎉']
+            broadcastMessages: ['欢迎来到童心宠伴！🎉'],
+            accessories: [...DEFAULT_ACCESSORIES],
+            prizes: [...DEFAULT_PRIZES]
           };
           userData.classes = [defaultClass];
           userData.currentClassId = defaultClass.id;

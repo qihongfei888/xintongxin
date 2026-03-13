@@ -45,15 +45,39 @@
   });
   
   // 初始化 Bmob
-  try {
-    if (typeof Bmob !== 'undefined') {
-      Bmob.initialize("055bbfab769cf4ca035e9a97bdd2a015", "8f55b66963acf2810512a244e17d7b79");
-      console.log('✅ Bmob 初始化成功');
-    } else {
-      console.error('❌ Bmob SDK 未加载');
+  function initBmob() {
+    try {
+      if (typeof Bmob !== 'undefined') {
+        Bmob.initialize("055bbfab769cf4ca035e9a97bdd2a015", "8f55b66963acf2810512a244e17d7b79");
+        console.log('✅ Bmob 初始化成功');
+        return true;
+      } else {
+        console.error('❌ Bmob SDK 未加载');
+        return false;
+      }
+    } catch (e) {
+      console.error('❌ Bmob 初始化失败:', e);
+      return false;
     }
-  } catch (e) {
-    console.error('❌ Bmob 初始化失败:', e);
+  }
+  
+  // 尝试初始化Bmob，如果失败则延迟重试
+  if (!initBmob()) {
+    let retryCount = 0;
+    const maxRetries = 5;
+    const retryInterval = 1000;
+    
+    const retryInit = setInterval(() => {
+      retryCount++;
+      console.log(`🔄 尝试重新初始化Bmob (${retryCount}/${maxRetries})`);
+      
+      if (initBmob() || retryCount >= maxRetries) {
+        clearInterval(retryInit);
+        if (retryCount >= maxRetries) {
+          console.error('❌ 多次尝试后Bmob仍未加载，将使用本地存储模式');
+        }
+      }
+    }, retryInterval);
   }
   
 

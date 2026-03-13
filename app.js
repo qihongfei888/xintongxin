@@ -401,13 +401,64 @@
       // 如果当前用户有ID但没有数据，尝试从默认键中读取
       if (app.currentUserId) {
         var defaultV = localStorage.getItem('class_pet_default_user');
-        if (defaultV) return JSON.parse(defaultV);
+        if (defaultV) {
+          const defaultData = JSON.parse(defaultV);
+          // 将默认键的数据迁移到用户特定的键
+          setUserData(defaultData);
+          return defaultData;
+        }
+      }
+      // 如果没有用户ID但默认键也没有数据，尝试从用户特定的键中读取
+      if (!app.currentUserId) {
+        // 尝试从localStorage中获取保存的用户ID
+        const currentUserStr = localStorage.getItem(CURRENT_USER_KEY);
+        if (currentUserStr) {
+          try {
+            const currentUser = JSON.parse(currentUserStr);
+            if (currentUser.id) {
+              const userKey = USER_DATA_PREFIX + currentUser.id;
+              const userV = localStorage.getItem(userKey);
+              if (userV) {
+                const userData = JSON.parse(userV);
+                // 将用户特定键的数据迁移到默认键
+                localStorage.setItem('class_pet_default_user', userV);
+                return userData;
+              }
+            }
+          } catch (e) {
+            console.error('读取当前用户数据失败:', e);
+          }
+        }
       }
       return {};
     } catch (e) {
       // 如果当前用户有ID但没有数据，尝试从内存中的默认键读取
       if (app.currentUserId && memoryStorage['class_pet_default_user']) {
-        return memoryStorage['class_pet_default_user'];
+        const defaultData = memoryStorage['class_pet_default_user'];
+        // 将默认键的数据迁移到用户特定的键
+        setUserData(defaultData);
+        return defaultData;
+      }
+      // 如果没有用户ID但默认键也没有数据，尝试从内存中的用户特定键读取
+      if (!app.currentUserId) {
+        // 尝试从内存中获取保存的用户ID
+        const currentUserStr = memoryStorage[CURRENT_USER_KEY];
+        if (currentUserStr) {
+          try {
+            const currentUser = JSON.parse(currentUserStr);
+            if (currentUser.id) {
+              const userKey = USER_DATA_PREFIX + currentUser.id;
+              const userData = memoryStorage[userKey];
+              if (userData) {
+                // 将用户特定键的数据迁移到默认键
+                memoryStorage['class_pet_default_user'] = userData;
+                return userData;
+              }
+            }
+          } catch (e) {
+            console.error('读取当前用户数据失败:', e);
+          }
+        }
       }
       return memoryStorage[key] || {};
     }
@@ -470,6 +521,21 @@
       if (app.currentUserId) {
         localStorage.setItem('class_pet_default_user', JSON.stringify(data));
       }
+      // 如果没有用户ID但有保存的用户ID，也更新用户特定的键
+      if (!app.currentUserId) {
+        const currentUserStr = localStorage.getItem(CURRENT_USER_KEY);
+        if (currentUserStr) {
+          try {
+            const currentUser = JSON.parse(currentUserStr);
+            if (currentUser.id) {
+              const userKey = USER_DATA_PREFIX + currentUser.id;
+              localStorage.setItem(userKey, JSON.stringify(data));
+            }
+          } catch (e) {
+            console.error('更新用户特定键失败:', e);
+          }
+        }
+      }
     } catch (e) {
       console.warn('localStorage 写入失败:', e);
     }
@@ -482,6 +548,23 @@
         IndexedDBManager.setItem('class_pet_default_user', data).catch(function(e) {
           console.error('IndexedDB 写入默认键失败:', e);
         });
+      }
+      // 如果没有用户ID但有保存的用户ID，也更新用户特定的键
+      if (!app.currentUserId) {
+        const currentUserStr = localStorage.getItem(CURRENT_USER_KEY);
+        if (currentUserStr) {
+          try {
+            const currentUser = JSON.parse(currentUserStr);
+            if (currentUser.id) {
+              const userKey = USER_DATA_PREFIX + currentUser.id;
+              IndexedDBManager.setItem(userKey, data).catch(function(e) {
+                console.error('IndexedDB 写入用户特定键失败:', e);
+              });
+            }
+          } catch (e) {
+            console.error('更新用户特定键失败:', e);
+          }
+        }
       }
     }
   }
@@ -7834,25 +7917,46 @@
         return;
       }
       
-      // 不是管理员，先从云端同步用户列表，再进行登录
-      console.log('非管理员登录，开始同步用户列表');
-      app.syncUserListFromCloud().then(function(syncSuccess) {
-        console.log('用户列表同步结果:', syncSuccess);
-        // 然后进行登录
-        app.login(username, password).then(function(success) {
-          if (!success) {
-            // 检查用户是否存在
-            const users = app.getUserList();
-            console.log('用户列表:', users);
-            const userExists = users.some(u => u.username === username);
-            console.log('用户是否存在:', userExists);
-            if (!userExists) {
-              alert('用户名不存在，请先注册');
-            } else {
-              alert('密码错误，请重新输入');
-            }
+      // 不是管理员，先检查本地用户列表
+      console.log('非管理员登录，先检查本地用户列表');
+      let localUsers = getUserList();
+      console.log('本地用户列表:', localUsers);
+      
+      // 检查用户是否在本地存在
+      let userExistsLocally = localUsers.some(u => u.username === username);
+      console.log('用户是否在本地存在:', userExistsLocally);
+      
+      // 如果本地不存在，尝试从云端同步
+      if (!userExistsLocally) {
+        console.log('本地用户不存在，尝试从云端同步用户列表');
+        try {
+          const syncSuccess = await app.syncUserListFromCloud();
+          console.log('用户列表同步结果:', syncSuccess);
+          // 再次检查本地用户列表
+          localUsers = getUserList();
+          console.log('同步后本地用户列表:', localUsers);
+          userExistsLocally = localUsers.some(u => u.username === username);
+          console.log('同步后用户是否存在:', userExistsLocally);
+        } catch (e) {
+          console.error('同步用户列表失败:', e);
+        }
+      }
+      
+      // 进行登录
+      console.log('开始登录验证');
+      app.login(username, password).then(function(success) {
+        if (!success) {
+          // 检查用户是否存在
+          const users = app.getUserList();
+          console.log('最终用户列表:', users);
+          const userExists = users.some(u => u.username === username);
+          console.log('最终用户是否存在:', userExists);
+          if (!userExists) {
+            alert('用户名不存在，请先注册');
+          } else {
+            alert('密码错误，请重新输入');
           }
-        });
+        }
       });
     });
     document.getElementById('register-form').addEventListener('submit', function (e) {

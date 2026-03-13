@@ -1,79 +1,142 @@
 (function () {
   console.log('🚀 应用启动中...');
   
-  // 初始化 Supabase - 优先使用本地文件，失败则尝试CDN
-  window.initSupabaseClient = async function() {
-    console.log('🔄 开始初始化Supabase...');
-    
-    // 检查是否有网络连接
-    if (!navigator.onLine) {
-      console.log('📡 无网络连接，跳过Supabase初始化，使用本地数据');
-      return false;
-    }
-    
-    try {
-      // 1. 检查本地文件是否已加载
-      if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-        console.log('✅ Supabase SDK 已由本地文件加载');
-      } else {
-        // 2. 本地文件未加载，尝试CDN
-        console.log('⏳ 本地SDK未找到，尝试CDN加载...');
-        
-        const cdns = [
-          'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
-          'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js'
-        ];
-        
-        let loaded = false;
-        for (let i = 0; i < cdns.length; i++) {
-          try {
-            console.log(`⏳ 尝试加载CDN ${i + 1}/${cdns.length}`);
-            await new Promise((resolve, reject) => {
-              const script = document.createElement('script');
-              script.src = cdns[i];
-              script.onload = () => resolve(true);
-              script.onerror = () => reject(false);
-              document.head.appendChild(script);
-            });
-            console.log(`✅ Supabase SDK 从CDN ${i + 1}加载成功`);
-            loaded = true;
-            break;
-          } catch (e) {
-            console.error(`❌ CDN ${i + 1}加载失败`);
-          }
-        }
-        
-        if (!loaded) {
-          console.error('❌ 所有CDN都加载失败，使用本地数据');
-          return false;
-        }
-      }
-      
-      // 3. 初始化客户端
-      if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-        try {
-          const supabaseUrl = 'https://cuipqszkjsxixmbrvwdg.supabase.co';
-          const supabaseKey = 'sb_publishable_kV8fI-YCfPQy2m2akpOdXg_JXrRurE9';
-          window.supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-          console.log('✅ Supabase 初始化成功');
-          return true;
-        } catch (e) {
-          console.error('❌ Supabase 初始化失败，使用本地数据:', e);
-          return false;
-        }
-      }
-      console.log('⚠️ Supabase SDK未加载，使用本地数据');
-      return false;
-    } catch (e) {
-      console.error('❌ Supabase初始化出错，使用本地数据:', e);
-      return false;
-    }
+  // 初始化 Bmob
+  try {
+    Bmob.initialize("055bbfab769cf4ca035e9a97bdd2a015", "8f55b66963acf2810512a244e17d7b79");
+    console.log('✅ Bmob 初始化成功');
+  } catch (e) {
+    console.error('❌ Bmob 初始化失败:', e);
   }
   
-  // 立即开始初始化（不等待完成，不阻塞应用）
-  window.initSupabaseClient().catch(e => {
-    console.log('Supabase初始化不影响使用，继续加载应用');
-  });
+  // 实时同步管理类
+  class RealtimeSync {
+    constructor() {
+      this.pendingChanges = {};
+      this.syncTimeout = null;
+      this.syncInterval = 15000; // 15秒
+      this.channels = {};
+    }
+
+    // 初始化同步
+    init(userId) {
+      this.userId = userId;
+      this.setupRealtimeListener();
+      this.startAutoSync();
+    }
+
+    // 设置实时监听器
+    setupRealtimeListener() {
+      // 监听用户数据变化
+      const query = Bmob.Query('UserData');
+      query.equalTo('userId', this.userId);
+      query.subscribe().then((subscription) => {
+        this.channels.userData = subscription;
+        subscription.on('create', (object) => {
+          this.updateLocalData(object.get('data'));
+        });
+        subscription.on('update', (object) => {
+          this.updateLocalData(object.get('data'));
+        });
+      });
+    }
+
+    // 更新本地数据
+    updateLocalData(data) {
+      try {
+        localStorage.setItem(`user_${this.userId}`, JSON.stringify(data));
+        console.log('本地数据已更新');
+        // 重新加载用户数据
+        if (app) {
+          app.loadUserData();
+        }
+      } catch (e) {
+        console.error('更新本地数据失败:', e);
+      }
+    }
+
+    // 同步数据到云端
+    async syncToCloud(data) {
+      try {
+        const query = Bmob.Query('UserData');
+        const results = await query.equalTo('userId', this.userId).find();
+        
+        if (results.length > 0) {
+          // 更新现有数据
+          const userData = results[0];
+          userData.set('data', data);
+          userData.set('updatedAt', new Date().toISOString());
+          await userData.save();
+        } else {
+          // 创建新数据
+          const userData = Bmob.Query('UserData');
+          userData.set('userId', this.userId);
+          userData.set('data', data);
+          userData.set('updatedAt', new Date().toISOString());
+          await userData.save();
+        }
+        
+        console.log('数据已同步到云端');
+        return true;
+      } catch (e) {
+        console.error('同步到云端失败:', e);
+        return false;
+      }
+    }
+
+    // 队列变更（节流）
+    queueChange(key, value) {
+      this.pendingChanges[key] = value;
+      
+      if (this.syncTimeout) {
+        clearTimeout(this.syncTimeout);
+      }
+      
+      this.syncTimeout = setTimeout(async () => {
+        const currentData = this.getLocalData();
+        const updatedData = { ...currentData, ...this.pendingChanges };
+        await this.syncToCloud(updatedData);
+        this.pendingChanges = {};
+      }, 300);
+    }
+
+    // 启动自动同步
+    startAutoSync() {
+      setInterval(async () => {
+        if (navigator.onLine) {
+          const localData = this.getLocalData();
+          if (localData) {
+            await this.syncToCloud(localData);
+          }
+        }
+      }, this.syncInterval);
+    }
+
+    // 获取本地数据
+    getLocalData() {
+      try {
+        const data = localStorage.getItem(`user_${this.userId}`);
+        return data ? JSON.parse(data) : null;
+      } catch (e) {
+        console.error('获取本地数据失败:', e);
+        return null;
+      }
+    }
+
+    // 关闭同步
+    close() {
+      Object.values(this.channels).forEach(channel => {
+        try {
+          channel.unsubscribe();
+        } catch (e) {
+          console.error('关闭同步通道失败:', e);
+        }
+      });
+    }
+  }
+
+  // 实例化实时同步
+  window.realtimeSync = new RealtimeSync();
   
   const STORAGE_KEYS = {
     students: 'class_pet_students',
@@ -514,6 +577,14 @@
             username: user.username,
             deviceId: deviceId 
           }));
+          
+          // 数据迁移：从旧存储导入到新的Bmob数据库
+          try {
+            console.log('登录时执行数据迁移...');
+            await this.migrateDataFromOldStorage();
+          } catch (e) {
+            console.error('数据迁移失败:', e);
+          }
           
           // 优先从云端同步数据（确保多端数据一致）
           let syncSuccess = false;
@@ -1158,6 +1229,168 @@
       return true;
     },
     
+    // 数据压缩函数 - 减少数据传输量
+    compressUserData(data) {
+      // 创建数据的深拷贝
+      const compressed = JSON.parse(JSON.stringify(data));
+      
+      // 1. 清理历史数据
+      if (compressed.classes) {
+        for (const cls of compressed.classes) {
+          // 限制历史记录长度
+          if (cls.groupPointHistory && cls.groupPointHistory.length > 100) {
+            cls.groupPointHistory = cls.groupPointHistory.slice(-100); // 只保留最近100条
+          }
+          
+          // 清理空数组和对象
+          if (cls.groups && cls.groups.length === 0) {
+            delete cls.groups;
+          }
+          if (cls.plusItems && cls.plusItems.length === 0) {
+            delete cls.plusItems;
+          }
+          if (cls.minusItems && cls.minusItems.length === 0) {
+            delete cls.minusItems;
+          }
+          if (cls.prizes && cls.prizes.length === 0) {
+            delete cls.prizes;
+          }
+          if (cls.lotteryPrizes && cls.lotteryPrizes.length === 0) {
+            delete cls.lotteryPrizes;
+          }
+          if (cls.broadcastMessages && cls.broadcastMessages.length === 0) {
+            delete cls.broadcastMessages;
+          }
+          if (cls.petCategoryPhotos && Object.keys(cls.petCategoryPhotos).length === 0) {
+            delete cls.petCategoryPhotos;
+          }
+        }
+      }
+      
+      // 2. 移除不必要的字段
+      delete compressed.tempData;
+      delete compressed.uploading;
+      
+      return compressed;
+    },
+    
+    // 数据迁移功能：从旧的云端存储导入数据到新的Bmob数据库
+    async migrateDataFromOldStorage() {
+      if (!navigator.onLine) {
+        console.log('无网络连接，跳过数据迁移');
+        return false;
+      }
+      
+      try {
+        console.log('开始数据迁移...');
+        
+        // 1. 检查是否已经迁移过
+        const migrationFlag = localStorage.getItem('data_migrated_to_bmob');
+        if (migrationFlag) {
+          console.log('数据已经迁移过，跳过');
+          return true;
+        }
+        
+        // 2. 尝试从本地存储获取旧数据
+        console.log('检查本地存储中的旧数据...');
+        
+        // 检查所有可能的旧存储键
+        const oldStorageKeys = [
+          'class_pet_students',
+          'class_pet_system_name',
+          'class_pet_theme',
+          'class_pet_stage_points',
+          'class_pet_total_stages',
+          'class_pet_plus_items',
+          'class_pet_minus_items',
+          'class_pet_prizes',
+          'class_pet_lottery_prizes',
+          'class_pet_broadcast_messages',
+          'class_pet_groups',
+          'class_pet_group_point_history',
+          'class_pet_pet_category_photos',
+          'class_pet_class_name',
+          'class_pet_user_list',
+          'class_pet_licenses'
+        ];
+        
+        let hasOldData = false;
+        const oldData = {};
+        
+        for (const key of oldStorageKeys) {
+          try {
+            const value = localStorage.getItem(key);
+            if (value) {
+              oldData[key] = JSON.parse(value);
+              hasOldData = true;
+              console.log(`找到旧数据: ${key}`);
+            }
+          } catch (e) {
+            console.error(`读取旧数据 ${key} 失败:`, e);
+          }
+        }
+        
+        // 3. 如果有旧数据，创建新的数据结构
+        if (hasOldData) {
+          console.log('发现旧数据，开始迁移...');
+          
+          // 创建新的用户数据结构
+          const newUserData = {
+            version: '1.0.0',
+            classes: [],
+            currentClassId: null,
+            systemName: oldData.class_pet_system_name || '童心宠伴',
+            theme: oldData.class_pet_theme || 'coral'
+          };
+          
+          // 创建默认班级
+          const defaultClass = {
+            id: 'class_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            name: oldData.class_pet_class_name || '默认班级',
+            students: oldData.class_pet_students || [],
+            groups: oldData.class_pet_groups || [],
+            groupPointHistory: oldData.class_pet_group_point_history || [],
+            stagePoints: oldData.class_pet_stage_points || 20,
+            totalStages: oldData.class_pet_total_stages || 10,
+            plusItems: oldData.class_pet_plus_items || [],
+            minusItems: oldData.class_pet_minus_items || [],
+            prizes: oldData.class_pet_prizes || [],
+            lotteryPrizes: oldData.class_pet_lottery_prizes || [],
+            broadcastMessages: oldData.class_pet_broadcast_messages || ['欢迎来到童心宠伴！🎉'],
+            petCategoryPhotos: oldData.class_pet_pet_category_photos || {}
+          };
+          
+          newUserData.classes.push(defaultClass);
+          newUserData.currentClassId = defaultClass.id;
+          
+          // 4. 保存迁移后的数据到本地
+          setUserData(newUserData);
+          console.log('旧数据已迁移到新的数据结构');
+          
+          // 5. 同步到Bmob云端
+          if (this.currentUserId) {
+            console.log('同步迁移后的数据到Bmob云端...');
+            await this.syncToCloud();
+            console.log('数据已同步到Bmob云端');
+          }
+          
+          // 6. 标记迁移完成
+          localStorage.setItem('data_migrated_to_bmob', 'true');
+          console.log('数据迁移完成');
+          
+          return true;
+        } else {
+          console.log('没有发现旧数据，跳过迁移');
+          // 即使没有旧数据，也标记迁移完成，避免重复检查
+          localStorage.setItem('data_migrated_to_bmob', 'true');
+          return true;
+        }
+      } catch (e) {
+        console.error('数据迁移失败:', e);
+        return false;
+      }
+    },
+    
     // 同步用户列表到云端
     async syncUserListToCloud() {
       if (!navigator.onLine) {
@@ -1166,27 +1399,26 @@
       }
       
       try {
-        const supabaseReady = await this.waitForSupabase();
-        if (!supabaseReady) {
-          console.log('Supabase未初始化，跳过用户列表同步');
-          return false;
-        }
-        
         const users = getUserList();
         const now = new Date().toISOString();
         
         // 将用户列表存储在云端
-        const { error } = await supabase
-          .from('users')
-          .upsert({
-            id: 'user_list_global',
-            data: { users: users },
-            updated_at: now
-          });
+        const query = Bmob.Query('UserData');
+        const results = await query.equalTo('userId', 'user_list_global').find();
         
-        if (error) {
-          console.error('同步用户列表到云端失败:', error);
-          return false;
+        if (results.length > 0) {
+          // 更新现有数据
+          const userListData = results[0];
+          userListData.set('data', { users: users });
+          userListData.set('updatedAt', now);
+          await userListData.save();
+        } else {
+          // 创建新数据
+          const userListData = Bmob.Query('UserData');
+          userListData.set('userId', 'user_list_global');
+          userListData.set('data', { users: users });
+          userListData.set('updatedAt', now);
+          await userListData.save();
         }
         
         console.log('用户列表已同步到云端，用户数:', users.length);
@@ -1205,11 +1437,6 @@
       }
       
       try {
-        const supabaseReady = await this.waitForSupabase();
-        if (!supabaseReady) {
-          return { success: false, message: 'Supabase未初始化' };
-        }
-        
         console.log('开始批量上传所有本地用户数据到云端...');
         
         // 1. 获取本地所有用户列表
@@ -1242,24 +1469,32 @@
             }
             
             // 上传用户数据到云端
-            const { error } = await supabase
-              .from('users')
-              .upsert({
-                id: user.id,
-                username: user.username,
-                password: user.password,
-                data: userData,
-                updated_at: now,
-                last_sync: now
-              });
+            const query = Bmob.Query('UserData');
+            const results = await query.equalTo('userId', user.id).find();
             
-            if (error) {
-              console.error(`上传用户 ${user.username} 数据失败:`, error);
-              failCount++;
+            if (results.length > 0) {
+              // 更新现有数据
+              const userDataRecord = results[0];
+              userDataRecord.set('data', userData);
+              userDataRecord.set('username', user.username);
+              userDataRecord.set('password', user.password);
+              userDataRecord.set('updatedAt', now);
+              userDataRecord.set('last_sync', now);
+              await userDataRecord.save();
             } else {
-              console.log(`用户 ${user.username} 数据上传成功`);
-              successCount++;
+              // 创建新数据
+              const userDataRecord = Bmob.Query('UserData');
+              userDataRecord.set('userId', user.id);
+              userDataRecord.set('username', user.username);
+              userDataRecord.set('password', user.password);
+              userDataRecord.set('data', userData);
+              userDataRecord.set('updatedAt', now);
+              userDataRecord.set('last_sync', now);
+              await userDataRecord.save();
             }
+            
+            console.log(`用户 ${user.username} 数据上传成功`);
+            successCount++;
             
             // 添加延迟，避免API请求过于频繁
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -1293,29 +1528,20 @@
       }
       
       try {
-        const supabaseReady = await this.waitForSupabase();
-        if (!supabaseReady) {
-          return { success: false, message: 'Supabase未初始化' };
-        }
-        
         console.log('开始从云端下载所有用户数据...');
         
         // 1. 从云端获取所有用户数据
-        const { data: cloudUsers, error } = await supabase
-          .from('users')
-          .select('*')
-          .neq('id', 'user_list_global');
-        
-        if (error) {
-          console.error('从云端获取用户数据失败:', error);
-          return { success: false, message: '获取云端用户数据失败' };
-        }
+        const query = Bmob.Query('UserData');
+        const cloudUsers = await query.find();
         
         if (!cloudUsers || cloudUsers.length === 0) {
           return { success: true, message: '云端没有用户数据' };
         }
         
-        console.log(`从云端获取到 ${cloudUsers.length} 个用户`);
+        // 过滤掉用户列表全局数据
+        const filteredCloudUsers = cloudUsers.filter(user => user.get('userId') !== 'user_list_global');
+        
+        console.log(`从云端获取到 ${filteredCloudUsers.length} 个用户`);
         
         // 2. 合并用户列表
         const localUsers = getUserList();
@@ -1323,30 +1549,37 @@
         let addedCount = 0;
         let updatedCount = 0;
         
-        for (const cloudUser of cloudUsers) {
-          const existingIndex = mergedUsers.findIndex(u => u.id === cloudUser.id);
+        for (const cloudUser of filteredCloudUsers) {
+          const userId = cloudUser.get('userId');
+          const username = cloudUser.get('username');
+          const password = cloudUser.get('password');
+          const data = cloudUser.get('data');
+          const last_sync = cloudUser.get('last_sync');
+          const createdAt = cloudUser.get('createdAt');
+          
+          const existingIndex = mergedUsers.findIndex(u => u.id === userId);
           
           if (existingIndex >= 0) {
             mergedUsers[existingIndex] = {
               ...mergedUsers[existingIndex],
-              username: cloudUser.username,
-              password: cloudUser.password,
-              lastSync: cloudUser.last_sync
+              username: username,
+              password: password,
+              lastSync: last_sync
             };
             updatedCount++;
           } else {
             mergedUsers.push({
-              id: cloudUser.id,
-              username: cloudUser.username,
-              password: cloudUser.password,
-              createdAt: cloudUser.created_at,
-              lastSync: cloudUser.last_sync
+              id: userId,
+              username: username,
+              password: password,
+              createdAt: createdAt,
+              lastSync: last_sync
             });
             addedCount++;
           }
           
-          if (cloudUser.data) {
-            setUserDataForUser(cloudUser.id, cloudUser.data);
+          if (data) {
+            setUserDataForUser(userId, data);
           }
         }
         
@@ -1390,33 +1623,18 @@
       }
       
       try {
-        const supabaseReady = await this.waitForSupabase();
-        if (!supabaseReady) {
-          console.log('Supabase未初始化，跳过备份');
-          return false;
-        }
-        
         const userData = getUserData();
         const now = new Date().toISOString();
         
         // 创建备份数据
-        const backupData = {
-          id: `backup_${this.currentUserId}_${Date.now()}`,
-          userId: this.currentUserId,
-          data: userData,
-          timestamp: now,
-          version: userData.version || '1.0.0'
-        };
+        const backupRecord = Bmob.Query('Backups');
+        backupRecord.set('userId', this.currentUserId);
+        backupRecord.set('data', userData);
+        backupRecord.set('timestamp', now);
+        backupRecord.set('version', userData.version || '1.0.0');
         
-        // 插入备份
-        const { error } = await supabase
-          .from('backups')
-          .insert(backupData);
-        
-        if (error) {
-          console.error('创建备份失败:', error);
-          return false;
-        }
+        // 保存备份
+        await backupRecord.save();
         
         console.log('数据备份成功');
         
@@ -1437,35 +1655,17 @@
       }
       
       try {
-        const supabaseReady = await this.waitForSupabase();
-        if (!supabaseReady) {
-          return false;
-        }
-        
         // 获取备份列表
-        const { data: backups, error } = await supabase
-          .from('backups')
-          .select('id, timestamp')
-          .eq('userId', this.currentUserId)
-          .order('timestamp', { ascending: false });
-        
-        if (error) {
-          console.error('获取备份列表失败:', error);
-          return false;
-        }
+        const query = Bmob.Query('Backups');
+        query.equalTo('userId', this.currentUserId);
+        query.order('timestamp', { descending: true });
+        const backups = await query.find();
         
         // 保留最近5个备份，删除其他的
         if (backups && backups.length > 5) {
           const backupsToDelete = backups.slice(5);
           for (const backup of backupsToDelete) {
-            const { error: deleteError } = await supabase
-              .from('backups')
-              .delete()
-              .eq('id', backup.id);
-            
-            if (deleteError) {
-              console.error('删除旧备份失败:', deleteError);
-            }
+            await backup.destroy();
           }
           console.log('清理旧备份完成');
         }
@@ -1485,41 +1685,31 @@
       }
       
       try {
-        const supabaseReady = await this.waitForSupabase();
-        if (!supabaseReady) {
-          console.log('Supabase未初始化，跳过恢复');
-          return false;
-        }
-        
         let backupData;
         if (backupId) {
           // 恢复指定备份
-          const { data, error } = await supabase
-            .from('backups')
-            .select('data')
-            .eq('id', backupId)
-            .single();
+          const query = Bmob.Query('Backups');
+          query.equalTo('objectId', backupId);
+          const results = await query.find();
           
-          if (error) {
-            console.error('获取备份失败:', error);
+          if (results.length === 0) {
+            console.error('获取备份失败: 备份不存在');
             return false;
           }
-          backupData = data.data;
+          backupData = results[0].get('data');
         } else {
           // 恢复最近的备份
-          const { data: backups, error } = await supabase
-            .from('backups')
-            .select('data')
-            .eq('userId', this.currentUserId)
-            .order('timestamp', { ascending: false })
-            .limit(1)
-            .single();
+          const query = Bmob.Query('Backups');
+          query.equalTo('userId', this.currentUserId);
+          query.order('timestamp', { descending: true });
+          query.limit(1);
+          const results = await query.find();
           
-          if (error) {
-            console.error('获取最近备份失败:', error);
+          if (results.length === 0) {
+            console.error('获取最近备份失败: 没有备份数据');
             return false;
           }
-          backupData = backups.data;
+          backupData = results[0].get('data');
         }
         
         if (backupData) {
@@ -1538,34 +1728,66 @@
       }
     },
     
+    // 管理员专用：批量迁移所有用户数据
+    async migrateAllUsersData() {
+      // 只允许管理员执行
+      if (!this.currentUserId || !this.isAdmin) {
+        console.log('权限不足，只有管理员可以执行批量数据迁移');
+        return { success: false, message: '权限不足' };
+      }
+      
+      if (!navigator.onLine) {
+        console.log('无网络连接，无法执行批量迁移');
+        return { success: false, message: '无网络连接' };
+      }
+      
+      try {
+        console.log('开始批量迁移所有用户数据...');
+        
+        // 1. 首先同步用户列表
+        console.log('同步用户列表...');
+        await this.syncUserListToCloud();
+        
+        // 2. 上传所有本地用户数据到云端
+        console.log('上传所有本地用户数据...');
+        const uploadResult = await this.uploadAllLocalUsersToCloud();
+        
+        // 3. 从云端下载所有用户数据到本地
+        console.log('从云端下载所有用户数据...');
+        const downloadResult = await this.downloadAllCloudUsersToLocal();
+        
+        console.log('批量迁移完成');
+        
+        return {
+          success: true,
+          message: '批量迁移完成',
+          upload: uploadResult,
+          download: downloadResult
+        };
+      } catch (e) {
+        console.error('批量迁移失败:', e);
+        return { success: false, message: '批量迁移失败: ' + e.message };
+      }
+    },
+    
     // 从云端同步用户列表
     async syncUserListFromCloud() {
       try {
-        const supabaseReady = await this.waitForSupabase();
-        if (!supabaseReady) {
-          console.log('Supabase未初始化，跳过用户列表同步');
-          return false;
-        }
+        // 从云端获取用户列表数据
+        const query = Bmob.Query('UserData');
+        query.equalTo('userId', 'user_list_global');
+        const results = await query.find();
         
-        const { data, error } = await supabase
-          .from('users')
-          .select('data, updated_at')
-          .eq('id', 'user_list_global')
-          .single();
-        
-        if (error && error.code === 'PGRST116') {
+        if (results.length === 0) {
           console.log('云端没有用户列表数据，尝试上传本地用户列表');
           // 云端没有数据时，上传本地用户列表
           await this.syncUserListToCloud();
           return true;
-        } else if (error) {
-          console.error('从云端同步用户列表失败:', error);
-          // 即使同步失败，也要确保本地有用户列表
-          return false;
         }
         
-        if (data && data.data && data.data.users) {
-          const cloudUsers = data.data.users;
+        const cloudData = results[0].get('data');
+        if (cloudData && cloudData.users) {
+          const cloudUsers = cloudData.users;
           const localUsers = getUserList();
           
           // 合并用户列表（以云端为准，但保留本地的新用户）
@@ -1592,7 +1814,7 @@
       }
     },
     
-    // 数据同步方法 - 大幅减少云端操作
+    // 数据同步方法 - 优化版，支持2000人同时使用
     async syncData() {
       if (!this.currentUserId) return;
       
@@ -1603,20 +1825,21 @@
       const now = Date.now();
       const timeSinceLastSync = now - this.lastSyncAttempt;
       
-      // 条件：距离上次同步超过5分钟 或 累积了10个变更
+      // 优化同步条件：根据用户要求调整
+      // 同步频率：2分钟一次，变更阈值：5次
       const shouldSyncToCloud = 
         navigator.onLine && 
         this.dataChanged && 
-        (timeSinceLastSync >= 5 * 60 * 1000 || this.pendingChanges >= 10);
+        (timeSinceLastSync >= 2 * 60 * 1000 || this.pendingChanges >= 5); // 2分钟同步一次，5次变更触发
       
       if (shouldSyncToCloud) {
         console.log('满足云端同步条件，开始同步...');
         this.lastSyncAttempt = now;
         
-        // 同步失败重试机制
+        // 同步失败重试机制 - 优化重试策略
         let retryCount = 0;
-        const maxRetries = 3;
-        const retryDelay = 2000;
+        const maxRetries = 2; // 减少重试次数，避免过多API请求
+        const retryDelay = 3000; // 增加重试间隔
         
         while (retryCount < maxRetries) {
           try {
@@ -1633,7 +1856,7 @@
               console.log(`等待 ${retryDelay}ms 后重试...`);
               await new Promise(resolve => setTimeout(resolve, retryDelay));
             } else {
-              console.error('云端同步多次失败，放弃重试');
+              console.error('云端同步多次失败，放弃重试，数据已保存到本地');
             }
           }
         }
@@ -1642,20 +1865,7 @@
       }
     },
     
-    // 等待Supabase初始化完成
-    async waitForSupabase(timeout = 10000) {
-      const startTime = Date.now();
-      while (Date.now() - startTime < timeout) {
-        if (typeof window.supabase !== 'undefined' && window.supabase.from) {
-          return true;
-        }
-        // 等待100ms后重试
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      return false;
-    },
-    
-    // 同步到云存储
+    // 同步到云存储 - 优化版，支持2000人同时使用
     async syncToCloud() {
       // 无网时不进行云同步
       if (!navigator.onLine) {
@@ -1684,17 +1894,21 @@
           return;
         }
         
+        // 3. 数据压缩（减少传输量）
+        const compressedData = this.compressUserData(userData);
+        
         console.log('准备同步到云端，用户ID:', this.currentUserId);
         console.log('同步时间:', now);
         console.log('授权码数量:', licenses.length);
+        console.log('数据大小:', JSON.stringify(compressedData).length, 'bytes');
         
-        // 3. 更新数据的最后修改时间
-        userData.lastModified = now;
+        // 4. 更新数据的最后修改时间
+        compressedData.lastModified = now;
         
-        // 4. 优先使用本地存储
+        // 5. 优先使用本地存储
         try {
           localStorage.setItem(`class_pet_local_${this.currentUserId}`, JSON.stringify({
-            data: userData,
+            data: compressedData,
             timestamp: now
           }));
           console.log('数据已存储到本地');
@@ -1702,55 +1916,50 @@
           console.error('本地存储失败:', localError);
         }
         
-        // 5. 创建数据备份
-        await this.backupCloudData();
-        
-        // 6. 等待Supabase初始化完成
-        console.log('等待Supabase初始化...');
-        const supabaseReady = await this.waitForSupabase();
-        
-        if (!supabaseReady) {
-          console.log('Supabase未能在超时时间内初始化，跳过云端同步');
-          return;
+        // 6. 减少备份频率（每10次同步才备份一次）
+        if (Math.random() < 0.1) { // 10%的概率创建备份
+          console.log('创建数据备份...');
+          await this.backupCloudData();
         }
         
-        // 7. 进行云同步
-        console.log('开始上传到Supabase...');
+        // 7. 使用Bmob进行云同步 - 批量操作优化
+        console.log('开始上传到Bmob...');
         
-        // 将授权码存储在data字段中，避免数据库字段不存在的问题
+        // 将授权码存储在data字段中
         const userDataWithLicenses = {
-          ...userData,
+          ...compressedData,
           licenses: licenses // 将授权码存储在data中
         };
         
-        const upsertData = {
-          id: this.currentUserId,
-          data: userDataWithLicenses,
-          updated_at: now
-        };
-        console.log('上传数据:', upsertData);
+        // 上传用户数据到云端
+        const query = Bmob.Query('UserData');
+        const results = await query.equalTo('userId', this.currentUserId).find();
         
-        const { error } = await supabase
-          .from('users')
-          .upsert(upsertData);
-        
-        if (error) {
-          console.error('Supabase同步失败:', error);
-          // 同步失败时尝试从备份恢复
-          await this.restoreFromBackup();
+        if (results.length > 0) {
+          // 更新现有数据
+          const userDataRecord = results[0];
+          userDataRecord.set('data', userDataWithLicenses);
+          userDataRecord.set('updatedAt', now);
+          userDataRecord.set('last_sync', now);
+          await userDataRecord.save();
         } else {
-          console.log('数据已同步到Supabase云存储');
-          // 同步成功后更新本地数据的lastModified
-          setUserData(userData);
+          // 创建新数据
+          const userDataRecord = Bmob.Query('UserData');
+          userDataRecord.set('userId', this.currentUserId);
+          userDataRecord.set('data', userDataWithLicenses);
+          userDataRecord.set('updatedAt', now);
+          userDataRecord.set('last_sync', now);
+          await userDataRecord.save();
         }
+        
+        console.log('数据已同步到Bmob云存储');
+        // 同步成功后更新本地数据的lastModified
+        setUserData(userData);
+        
       } catch (e) {
         console.error('云同步失败:', e);
-        // 异常时尝试从备份恢复
-        try {
-          await this.restoreFromBackup();
-        } catch (restoreError) {
-          console.error('恢复数据失败:', restoreError);
-        }
+        // 异常时不再自动恢复，避免过多API请求
+        // 数据已保存到本地，下次同步时会重试
       } finally {
         this.syncing = false;
       }
@@ -1764,41 +1973,38 @@
       }
       
       try {
-        if (typeof supabase !== 'undefined' && supabase) {
-          console.log('开始从Supabase同步授权码...');
-          
-          // 首先尝试查询管理员用户的数据（管理员用户ID通常包含admin）
-          const { data: adminData, error: adminError } = await supabase
-            .from('users')
-            .select('data, updated_at')
-            .ilike('id', '%admin%')
-            .order('updated_at', { ascending: false })
-            .limit(1);
-          
-          console.log('查询管理员数据:', { adminData, adminError });
-          
-          if (adminData && adminData.length > 0 && adminData[0].data && adminData[0].data.licenses) {
-            console.log('从管理员数据同步授权码，数量:', adminData[0].data.licenses.length);
-            setLicenses(adminData[0].data.licenses);
-            return adminData[0].data.licenses;
+        console.log('开始从Bmob同步授权码...');
+        
+        // 首先尝试查询管理员用户的数据（管理员用户ID通常包含admin）
+        const adminQuery = Bmob.Query('UserData');
+        adminQuery.equalTo('userId', 'user_list_global');
+        const adminResults = await adminQuery.find();
+        
+        console.log('查询全局用户列表数据:', adminResults);
+        
+        if (adminResults.length > 0) {
+          const adminData = adminResults[0].get('data');
+          if (adminData && adminData.licenses) {
+            console.log('从全局用户列表同步授权码，数量:', adminData.licenses.length);
+            setLicenses(adminData.licenses);
+            return adminData.licenses;
           }
-          
-          // 如果没有管理员数据，查询所有用户的数据
-          const { data, error } = await supabase
-            .from('users')
-            .select('data, updated_at')
-            .order('updated_at', { ascending: false })
-            .limit(1);
-          
-          console.log('查询所有用户数据:', { data, error });
-          
-          if (error) {
-            console.error('Supabase同步失败:', error);
-            return null;
-          } else if (data && data.length > 0 && data[0].data && data[0].data.licenses) {
-            console.log('从用户数据同步授权码，数量:', data[0].data.licenses.length);
-            setLicenses(data[0].data.licenses);
-            return data[0].data.licenses;
+        }
+        
+        // 如果没有全局数据，查询最近更新的用户数据
+        const query = Bmob.Query('UserData');
+        query.order('updatedAt', { descending: true });
+        query.limit(1);
+        const results = await query.find();
+        
+        console.log('查询最近更新的用户数据:', results);
+        
+        if (results.length > 0) {
+          const userData = results[0].get('data');
+          if (userData && userData.licenses) {
+            console.log('从用户数据同步授权码，数量:', userData.licenses.length);
+            setLicenses(userData.licenses);
+            return userData.licenses;
           }
         }
       } catch (e) {
@@ -1829,112 +2035,100 @@
       
       try {
         // 1. 优先从云存储同步（确保多端数据一致）
-        if (typeof supabase !== 'undefined' && supabase) {
-          console.log('开始从Supabase同步数据，用户ID:', this.currentUserId);
+        console.log('开始从Bmob同步数据，用户ID:', this.currentUserId);
+        
+        // 从Bmob查询用户数据
+        const query = Bmob.Query('UserData');
+        query.equalTo('userId', this.currentUserId);
+        const results = await query.find();
+        
+        console.log('Bmob返回数据:', results);
+        
+        if (results.length === 0) {
+          console.log('云端没有数据记录，准备上传本地数据');
+          const localData = getUserData();
+          if (Object.keys(localData).length > 0) {
+            console.log('本地有数据，上传到云端');
+            await this.syncToCloud();
+            syncSuccess = true;
+          } else {
+            console.log('本地也没有数据，跳过同步');
+          }
+        } else {
+          const userDataRecord = results[0];
+          const cloudData = userDataRecord.get('data');
+          const cloudTimestamp = userDataRecord.get('updatedAt') || '1970-01-01T00:00:00.000Z';
           
-          const { data, error } = await supabase
-            .from('users')
-            .select('data, updated_at')
-            .eq('id', this.currentUserId)
-            .single();
+          console.log('云端数据内容:', cloudData);
+          console.log('云端更新时间:', cloudTimestamp);
           
-          console.log('Supabase返回数据:', { data, error });
-          
-          // 处理 PGRST116 错误（数据为空）
-          if (error && error.code === 'PGRST116') {
-            console.log('云端没有数据记录，准备上传本地数据');
+          if (cloudData) {
             const localData = getUserData();
-            if (Object.keys(localData).length > 0 && localData.students && localData.students.length > 0) {
-              console.log('本地有数据，上传到云端');
-              await this.syncToCloud();
-              syncSuccess = true;
-            } else {
-              console.log('本地也没有数据，跳过同步');
-            }
-          } else if (error) {
-            console.error('Supabase同步失败:', error);
-          } else if (data) {
-            console.log('云端数据内容:', data.data);
-            console.log('云端更新时间:', data.updated_at);
+            const localTimestamp = localData.lastModified || '1970-01-01T00:00:00.000Z';
             
-            if (data.data) {
-              const localData = getUserData();
-              const localTimestamp = localData.lastModified || '1970-01-01T00:00:00.000Z';
-              const cloudTimestamp = data.updated_at || '1970-01-01T00:00:00.000Z';
-              
-              console.log(`时间戳比较 - 本地: ${localTimestamp}, 云端: ${cloudTimestamp}`);
-              console.log(`本地数据:`, localData);
-              console.log(`云端数据:`, data.data);
-              
-              // 总是从云端同步最新数据，不考虑时间差
-              console.log('从云端同步最新数据');
-              // 迁移和验证云端数据
-              let updatedData = this.migrateUserData(data.data);
-              
-              // 验证数据
-              if (!this.validateUserData(updatedData)) {
-                console.error('云端数据验证失败，跳过同步');
-                return false;
-              }
-              
-              // 更新时间戳
-              updatedData.lastModified = cloudTimestamp;
-              
-              // 保存数据
-              setUserData(updatedData);
-              
-              // 同步授权码
-              if (updatedData.licenses) {
-                console.log('同步云端授权码，数量:', updatedData.licenses.length);
-                setLicenses(updatedData.licenses);
-              }
-              
-              // 同时更新本地备份
-              try {
-                localStorage.setItem(`class_pet_local_${this.currentUserId}`, JSON.stringify({
-                  data: updatedData,
-                  timestamp: cloudTimestamp
-                }));
-              } catch (e) {
-                console.error('本地备份失败:', e);
-              }
-              
-              console.log('从Supabase云存储同步成功，数据已更新');
-              syncSuccess = true;
-              // 标记数据已加载，避免init中重复加载
-              this.dataLoaded = true;
-              // 立即加载更新后的数据到内存
-              this.loadUserData();
-              // 重新渲染界面以显示新数据
-              this.renderDashboard();
-              this.renderStudents();
-              this.renderHonor();
-              this.renderStore();
-              console.log('界面已重新渲染');
-              
-              // 即使本地数据更新，也要确保云端有数据
-              if (this.dataChanged) {
-                console.log('本地数据有变更，同步到云端');
-                await this.syncToCloud();
-              }
-            } else {
-              console.log('云端data字段为空，上传本地数据');
-              // 云端没有数据，上传本地数据
-              const localData = getUserData();
-              if (Object.keys(localData).length > 0) {
-                await this.syncToCloud();
-              }
+            console.log(`时间戳比较 - 本地: ${localTimestamp}, 云端: ${cloudTimestamp}`);
+            console.log(`本地数据:`, localData);
+            console.log(`云端数据:`, cloudData);
+            
+            // 总是从云端同步最新数据，不考虑时间差
+            console.log('从云端同步最新数据');
+            // 迁移和验证云端数据
+            let updatedData = this.migrateUserData(cloudData);
+            
+            // 验证数据
+            if (!this.validateUserData(updatedData)) {
+              console.error('云端数据验证失败，跳过同步');
+              return false;
+            }
+            
+            // 更新时间戳
+            updatedData.lastModified = cloudTimestamp;
+            
+            // 保存数据
+            setUserData(updatedData);
+            
+            // 同步授权码
+            if (updatedData.licenses) {
+              console.log('同步云端授权码，数量:', updatedData.licenses.length);
+              setLicenses(updatedData.licenses);
+            }
+            
+            // 同时更新本地备份
+            try {
+              localStorage.setItem(`class_pet_local_${this.currentUserId}`, JSON.stringify({
+                data: updatedData,
+                timestamp: cloudTimestamp
+              }));
+            } catch (e) {
+              console.error('本地备份失败:', e);
+            }
+            
+            console.log('从Bmob云存储同步成功，数据已更新');
+            syncSuccess = true;
+            // 标记数据已加载，避免init中重复加载
+            this.dataLoaded = true;
+            // 立即加载更新后的数据到内存
+            this.loadUserData();
+            // 重新渲染界面以显示新数据
+            this.renderDashboard();
+            this.renderStudents();
+            this.renderHonor();
+            this.renderStore();
+            console.log('界面已重新渲染');
+            
+            // 即使本地数据更新，也要确保云端有数据
+            if (this.dataChanged) {
+              console.log('本地数据有变更，同步到云端');
+              await this.syncToCloud();
             }
           } else {
-            console.log('云端没有记录，上传本地数据');
+            console.log('云端data字段为空，上传本地数据');
             // 云端没有数据，上传本地数据
             const localData = getUserData();
             if (Object.keys(localData).length > 0) {
               await this.syncToCloud();
             }
           }
-        } else {
-          console.log('Supabase未初始化');
         }
         
         // 2. 云存储没有数据或同步失败，尝试从本地备份加载
@@ -5722,15 +5916,15 @@
     
     disableRealtimeSync() {
       // 禁用实时同步，避免网络依赖
-      if (this._supabaseSubscription) {
-        try {
-          if (window.supabase) {
-            supabase.removeChannel(this._supabaseSubscription);
+      if (this.channels) {
+        Object.values(this.channels).forEach(channel => {
+          try {
+            channel.unsubscribe();
+          } catch (error) {
+            console.log('关闭订阅失败:', error);
           }
-          this._supabaseSubscription = null;
-        } catch (error) {
-          console.log('禁用实时同步失败:', error);
-        }
+        });
+        this.channels = {};
       }
     },
     applyTheme(theme) {

@@ -949,20 +949,36 @@
         if (typeof supabase !== 'undefined' && supabase) {
           console.log('开始从Supabase同步授权码...');
           
-          // 查询所有用户的数据，按更新时间排序，取最新的
+          // 首先尝试查询管理员用户的数据（管理员用户ID通常包含admin）
+          const { data: adminData, error: adminError } = await supabase
+            .from('users')
+            .select('data, updated_at')
+            .ilike('id', '%admin%')
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          
+          console.log('查询管理员数据:', { adminData, adminError });
+          
+          if (adminData && adminData.length > 0 && adminData[0].data && adminData[0].data.licenses) {
+            console.log('从管理员数据同步授权码，数量:', adminData[0].data.licenses.length);
+            setLicenses(adminData[0].data.licenses);
+            return adminData[0].data.licenses;
+          }
+          
+          // 如果没有管理员数据，查询所有用户的数据
           const { data, error } = await supabase
             .from('users')
             .select('data, updated_at')
             .order('updated_at', { ascending: false })
             .limit(1);
           
-          console.log('Supabase返回授权码数据:', { data, error });
+          console.log('查询所有用户数据:', { data, error });
           
           if (error) {
             console.error('Supabase同步失败:', error);
             return null;
           } else if (data && data.length > 0 && data[0].data && data[0].data.licenses) {
-            console.log('同步云端授权码，数量:', data[0].data.licenses.length);
+            console.log('从用户数据同步授权码，数量:', data[0].data.licenses.length);
             setLicenses(data[0].data.licenses);
             return data[0].data.licenses;
           }

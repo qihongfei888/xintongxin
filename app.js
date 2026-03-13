@@ -1031,7 +1031,7 @@
           
           const { data, error } = await supabase
             .from('users')
-            .select('data, licenses, updated_at')
+            .select('data, updated_at')
             .eq('id', this.currentUserId)
             .single();
           

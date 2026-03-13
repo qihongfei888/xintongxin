@@ -2545,7 +2545,9 @@
             if (this.currentUserId) {
               // 从Bmob查询用户数据
               const query = Bmob.Query('UserData');
-              query.equalTo('userId', this.currentUserId);
+              // 确保userId是字符串类型
+              const userIdStr = String(this.currentUserId);
+              query.equalTo('userId', userIdStr);
               results = await query.find();
             } else {
               // 没有用户ID时，查询最近更新的数据

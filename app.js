@@ -47,8 +47,8 @@
         localStorage.setItem(`user_${this.userId}`, JSON.stringify(data));
         console.log('本地数据已更新');
         // 重新加载用户数据
-        if (app) {
-          app.loadUserData();
+        if (window.app) {
+          window.app.loadUserData();
         }
       } catch (e) {
         console.error('更新本地数据失败:', e);
@@ -1977,7 +1977,7 @@
         
         console.log('数据已同步到Bmob云存储');
         // 同步成功后更新本地数据的lastModified
-        setUserData(userData);
+        setUserData(compressedData);
         
       } catch (e) {
         console.error('云同步失败:', e);

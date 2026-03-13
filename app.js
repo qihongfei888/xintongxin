@@ -1207,7 +1207,10 @@
         await this.saveUserDataInternal();
         
         // 3. 使用批量同步机制
-        this.scheduleSync();
+        // 避免循环调用：只有在非同步过程中才调用
+        if (!this.isSyncingData) {
+          this.scheduleSync();
+        }
       } catch (e) {
         console.error('保存用户数据失败:', e);
         // 显示用户友好的错误提示
@@ -1244,15 +1247,6 @@
           this.pendingChanges = 0;
         }
       }, 5 * 1000);
-      
-      // 如果累积了3个变更，立即同步
-      if (this.pendingChanges >= 3) {
-        clearTimeout(this.syncTimeout);
-        if (navigator.onLine) {
-          this.syncData();
-          this.pendingChanges = 0;
-        }
-      }
     },
     logout() {
       try {

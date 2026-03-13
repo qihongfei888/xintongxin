@@ -504,6 +504,26 @@
           return false;
         }
         
+        // 有网络时，先从云端同步授权码
+        if (navigator.onLine) {
+          try {
+            console.log('注册前从云端同步授权码...');
+            // 临时设置一个管理员用户ID来同步授权码
+            const tempUserId = 'admin_sync';
+            const originalUserId = this.currentUserId;
+            this.currentUserId = tempUserId;
+            
+            // 尝试从云端同步
+            await this.syncFromCloud();
+            
+            // 恢复原来的用户ID
+            this.currentUserId = originalUserId;
+          } catch (e) {
+            console.error('同步授权码失败:', e);
+            // 同步失败不影响注册流程
+          }
+        }
+        
         const deviceId = generateDeviceFingerprint();
         const licenseValidation = validateLicense(licenseKey, deviceId);
         

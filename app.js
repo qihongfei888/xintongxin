@@ -2552,7 +2552,8 @@
             } else {
               // 没有用户ID时，查询最近更新的数据
               const query = Bmob.Query('UserData');
-              query.order('updatedAt', { descending: true });
+              // 使用更兼容的排序方式
+              query.order('-updatedAt');
               query.limit(1);
               results = await query.find();
             }

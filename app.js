@@ -169,7 +169,7 @@
   // 激活授权码
   function activateLicense(licenseKey, deviceId, userId) {
     const licenses = getLicenses();
-    const licenseIndex = licenses.findIndex(l => l.key === licenseKey);
+    const licenseIndex = licenses.findIndex(l => l.key.toLowerCase() === licenseKey.toLowerCase());
     
     if (licenseIndex === -1) return false;
     
@@ -507,8 +507,8 @@
       try {
         // 检查密码强度
         const strength = checkPasswordStrength(password);
-        if (strength < 3) {
-          alert('密码强度不足，请使用至少8位包含大小写字母和数字的密码');
+        if (strength < 2) {
+          alert('密码强度不足，请使用至少6位包含字母和数字的密码');
           return false;
         }
         
@@ -543,6 +543,7 @@
         
         const users = getUserList();
         if (users.some(u => u.username === username)) {
+          alert('用户名已存在，请使用其他用户名');
           return false; // 用户名已存在
         }
         

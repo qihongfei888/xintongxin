@@ -539,15 +539,10 @@
     try {
       var v = localStorage.getItem(key);
       if (v) return JSON.parse(v);
-      // 如果当前用户有ID但没有数据，尝试从默认键中读取
+      // 如果当前用户有ID但没有数据，返回空对象
+      // 避免返回默认键的数据，确保每个用户有独立的数据
       if (userId) {
-        var defaultV = localStorage.getItem('class_pet_default_user');
-        if (defaultV) {
-          const defaultData = JSON.parse(defaultV);
-          // 直接返回默认数据，不进行迁移（避免递归）
-          // 数据迁移应该在登录时或其他合适的地方进行
-          return defaultData;
-        }
+        return {};
       }
       // 如果没有用户ID但默认键也没有数据，尝试从用户特定的键中读取
       if (!userId) {
@@ -573,11 +568,10 @@
       }
       return {};
     } catch (e) {
-      // 如果当前用户有ID但没有数据，尝试从内存中的默认键读取
-      if (userId && memoryStorage['class_pet_default_user']) {
-        const defaultData = memoryStorage['class_pet_default_user'];
-        // 直接返回默认数据，不进行迁移（避免递归）
-        return defaultData;
+      // 如果当前用户有ID但没有数据，返回内存中的空对象
+      // 避免返回默认键的数据，确保每个用户有独立的数据
+      if (userId) {
+        return memoryStorage[key] || {};
       }
       // 如果没有用户ID但默认键也没有数据，尝试从内存中的用户特定键读取
       if (!userId) {

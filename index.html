@@ -18,27 +18,49 @@
     }
   </style>
   <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Ma+Shan+Zheng&display=swap" rel="stylesheet" onerror="this.remove()">
-  <!-- Bmob SDK -->
-  <script src="https://unpkg.com/bmob-js-sdk@3.7.3/dist/Bmob-3.7.3.min.js" onerror="console.error('Bmob SDK CDN加载失败，使用备用方式');">
-  </script>
-  <!-- Bmob SDK 备用CDN -->
+  <!-- Bmob SDK 加载脚本 -->
   <script>
+    function loadBmobFallback1() {
+      console.log('尝试备用CDN 1...');
+      var script = document.createElement('script');
+      script.src = 'https://cdn.bootcdn.net/ajax/libs/bmob-js-sdk/3.7.3/Bmob-3.7.3.min.js';
+      script.onload = function() {
+        console.log('✅ Bmob SDK 备用CDN 1加载成功');
+      };
+      script.onerror = loadBmobFallback2;
+      document.head.appendChild(script);
+    }
+    
+    function loadBmobFallback2() {
+      console.log('尝试备用CDN 2...');
+      var script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/bmob-js-sdk@3.7.3/dist/Bmob-3.7.3.min.js';
+      script.onload = function() {
+        console.log('✅ Bmob SDK 备用CDN 2加载成功');
+      };
+      script.onerror = function() {
+        console.error('❌ 所有Bmob SDK CDN加载失败');
+      };
+      document.head.appendChild(script);
+    }
+    
+    // 加载主CDN
+    var mainScript = document.createElement('script');
+    mainScript.src = 'https://unpkg.com/bmob-js-sdk@3.7.3/dist/Bmob-3.7.3.min.js';
+    mainScript.onload = function() {
+      console.log('✅ Bmob SDK 主CDN加载成功');
+    };
+    mainScript.onerror = loadBmobFallback1;
+    document.head.appendChild(mainScript);
+    
     // 检查Bmob是否加载成功
     setTimeout(function() {
-      if (typeof Bmob === 'undefined') {
-        console.log('尝试备用CDN加载Bmob SDK...');
-        // 使用备用CDN
-        var script = document.createElement('script');
-        script.src = 'https://cdn.bootcdn.net/ajax/libs/bmob-js-sdk/3.7.3/Bmob-3.7.3.min.js';
-        script.onload = function() {
-          console.log('✅ Bmob SDK 备用CDN加载成功');
-        };
-        script.onerror = function() {
-          console.error('❌ Bmob SDK 备用CDN加载失败');
-        };
-        document.head.appendChild(script);
+      if (typeof Bmob !== 'undefined') {
+        console.log('✅ Bmob SDK 加载成功');
+      } else {
+        console.error('❌ Bmob SDK 未加载');
       }
-    }, 2000);
+    }, 3000);
   </script>
 </head>
 <body>

@@ -843,10 +843,12 @@
       
       try {
         const userData = getUserData();
+        const licenses = getLicenses(); // 读取授权码
         const now = new Date().toISOString();
         
         console.log('准备同步到云端，用户ID:', this.currentUserId);
         console.log('同步时间:', now);
+        console.log('授权码数量:', licenses.length);
         
         // 更新数据的最后修改时间
         userData.lastModified = now;
@@ -877,6 +879,7 @@
         const upsertData = {
           id: this.currentUserId,
           data: userData,
+          licenses: licenses, // 同步授权码
           updated_at: now
         };
         console.log('上传数据:', upsertData);
@@ -966,6 +969,12 @@
                   lastModified: cloudTimestamp
                 };
                 setUserData(updatedData);
+                
+                // 同步授权码
+                if (data.licenses) {
+                  console.log('同步云端授权码，数量:', data.licenses.length);
+                  setLicenses(data.licenses);
+                }
                 
                 // 同时更新本地备份
                 try {

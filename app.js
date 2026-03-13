@@ -109,7 +109,9 @@
       // 监听用户数据变化
       try {
         const query = Bmob.Query('UserData');
-        query.equalTo('userId', this.userId);
+        // 确保userId是字符串类型
+        const userIdStr = String(this.userId || 'default_user');
+        query.equalTo('userId', userIdStr);
         query.subscribe().then((subscription) => {
           this.channels.userData = subscription;
           subscription.on('create', (object) => {
@@ -186,8 +188,11 @@
         // 尝试将数据转换为JSON字符串，解决参数类型错误
         const dataToSync = JSON.stringify(data);
         
+        // 确保userId是字符串类型
+        const userIdStr = String(this.userId || 'default_user');
+        
         const query = Bmob.Query('UserData');
-        const results = await query.equalTo('userId', this.userId).find();
+        const results = await query.equalTo('userId', userIdStr).find();
         
         if (results.length > 0) {
           // 更新现有数据
@@ -198,7 +203,7 @@
         } else {
           // 创建新数据
           const userData = Bmob.Query('UserData');
-          userData.set('userId', this.userId);
+          userData.set('userId', userIdStr);
           userData.set('data', dataToSync);
           userData.set('updatedAt', new Date().toISOString());
           await userData.save();
@@ -2403,8 +2408,10 @@
             
             // 上传用户数据到云端
             const userId = this.currentUserId || 'default_user';
+            // 确保userId是字符串类型
+            const userIdStr = String(userId);
             const query = Bmob.Query('UserData');
-            const results = await query.equalTo('userId', userId).find();
+            const results = await query.equalTo('userId', userIdStr).find();
             
             // 尝试将数据转换为JSON字符串，解决参数类型错误
             const dataToSync = JSON.stringify(userDataWithLicenses);
@@ -2419,7 +2426,7 @@
             } else {
               // 创建新数据
               const userDataRecord = Bmob.Query('UserData');
-              userDataRecord.set('userId', userId);
+              userDataRecord.set('userId', userIdStr);
               userDataRecord.set('data', dataToSync);
               userDataRecord.set('updatedAt', now);
               userDataRecord.set('last_sync', now);

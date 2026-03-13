@@ -907,10 +907,15 @@
         // 3. 进行云同步
         console.log('开始上传到Supabase...');
         
+        // 将授权码存储在data字段中，避免数据库字段不存在的问题
+        const userDataWithLicenses = {
+          ...userData,
+          licenses: licenses // 将授权码存储在data中
+        };
+        
         const upsertData = {
           id: this.currentUserId,
-          data: userData,
-          licenses: licenses, // 同步授权码
+          data: userDataWithLicenses,
           updated_at: now
         };
         console.log('上传数据:', upsertData);
@@ -944,10 +949,10 @@
         if (typeof supabase !== 'undefined' && supabase) {
           console.log('开始从Supabase同步授权码...');
           
-          // 查询所有用户的授权码，按更新时间排序，取最新的
+          // 查询所有用户的数据，按更新时间排序，取最新的
           const { data, error } = await supabase
             .from('users')
-            .select('licenses, updated_at')
+            .select('data, updated_at')
             .order('updated_at', { ascending: false })
             .limit(1);
           
@@ -956,10 +961,10 @@
           if (error) {
             console.error('Supabase同步失败:', error);
             return null;
-          } else if (data && data.length > 0 && data[0].licenses) {
-            console.log('同步云端授权码，数量:', data[0].licenses.length);
-            setLicenses(data[0].licenses);
-            return data[0].licenses;
+          } else if (data && data.length > 0 && data[0].data && data[0].data.licenses) {
+            console.log('同步云端授权码，数量:', data[0].data.licenses.length);
+            setLicenses(data[0].data.licenses);
+            return data[0].data.licenses;
           }
         }
       } catch (e) {
@@ -1038,9 +1043,9 @@
                 setUserData(updatedData);
                 
                 // 同步授权码
-                if (data.licenses) {
-                  console.log('同步云端授权码，数量:', data.licenses.length);
-                  setLicenses(data.licenses);
+                if (data.data && data.data.licenses) {
+                  console.log('同步云端授权码，数量:', data.data.licenses.length);
+                  setLicenses(data.data.licenses);
                 }
                 
                 // 同时更新本地备份

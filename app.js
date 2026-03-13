@@ -823,6 +823,11 @@
       }
     },
     
+    // 获取用户列表
+    getUserList() {
+      return getUserList();
+    },
+    
     // 数据同步方法 - 大幅减少云端操作
     async syncData() {
       if (!this.currentUserId) return;
@@ -6531,11 +6536,18 @@
       }
       
       // 普通用户登录
-      if (app.login(username, password)) {
-        // 登录成功
-      } else {
-        alert('用户名或密码错误');
-      }
+      app.login(username, password).then(function(success) {
+        if (!success) {
+          // 检查用户是否存在
+          const users = app.getUserList();
+          const userExists = users.some(u => u.username === username);
+          if (!userExists) {
+            alert('用户名不存在，请先注册');
+          } else {
+            alert('密码错误，请重新输入');
+          }
+        }
+      });
     });
     document.getElementById('register-form').addEventListener('submit', function (e) {
       e.preventDefault();

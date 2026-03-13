@@ -44,7 +44,13 @@
     // 更新本地数据
     updateLocalData(data) {
       try {
-        localStorage.setItem(`user_${this.userId}`, JSON.stringify(data));
+        // 使用与app对象一致的键名
+        const key = this.userId ? `class_pet_user_data_${this.userId}` : 'class_pet_default_user';
+        localStorage.setItem(key, JSON.stringify(data));
+        // 同时更新默认键，确保数据不会丢失
+        if (this.userId) {
+          localStorage.setItem('class_pet_default_user', JSON.stringify(data));
+        }
         console.log('本地数据已更新');
         // 重新加载用户数据
         if (window.app) {
@@ -102,20 +108,17 @@
 
     // 启动自动同步
     startAutoSync() {
-      setInterval(async () => {
-        if (navigator.onLine) {
-          const localData = this.getLocalData();
-          if (localData) {
-            await this.syncToCloud(localData);
-          }
-        }
-      }, this.syncInterval);
+      // 不再设置独立的定时器，而是依赖app对象的自动同步机制
+      // 这样可以避免重复同步和过于频繁的API请求
+      console.log('RealtimeSync自动同步已启用，使用app对象的同步机制');
     }
 
     // 获取本地数据
     getLocalData() {
       try {
-        const data = localStorage.getItem(`user_${this.userId}`);
+        // 使用与app对象一致的键名
+        const key = this.userId ? `class_pet_user_data_${this.userId}` : 'class_pet_default_user';
+        const data = localStorage.getItem(key);
         return data ? JSON.parse(data) : null;
       } catch (e) {
         console.error('获取本地数据失败:', e);
@@ -632,6 +635,8 @@
           // 显示应用界面（init中会调用loadUserData加载最新数据）
           this.showApp();
           
+          // 初始化并启用RealtimeSync
+          window.realtimeSync.init(user.id);
           // 启用实时同步和自动同步（减少频次）
           this.enableRealtimeSync();
           this.enableAutoSync();
@@ -747,6 +752,8 @@
         this.initUserData();
         this.showApp();
         
+        // 初始化并启用RealtimeSync
+        window.realtimeSync.init(newUser.id);
         // 启用实时同步和自动同步
         this.enableRealtimeSync();
         this.enableAutoSync();

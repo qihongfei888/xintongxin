@@ -1309,10 +1309,14 @@
       try {
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('app').style.display = 'block';
-        this.init();
-        // 不再调用syncData，避免重复同步
+        // 不再调用不存在的init()方法，直接渲染设备列表
         // 渲染设备列表
         this.renderDevicesList();
+        // 确保数据已加载
+        if (!this.dataLoaded) {
+          this.loadUserData();
+          this.dataLoaded = true;
+        }
       } catch (e) {
         console.error('显示应用失败:', e);
         alert('应用加载失败，请刷新页面重试');
@@ -1331,6 +1335,8 @@
         if (!this.isSyncingData) {
           this.scheduleSync();
         }
+        
+        console.log('用户数据保存成功');
       } catch (e) {
         console.error('保存用户数据失败:', e);
         // 显示用户友好的错误提示

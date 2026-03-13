@@ -3,8 +3,12 @@
   
   // 初始化 Bmob
   try {
-    Bmob.initialize("055bbfab769cf4ca035e9a97bdd2a015", "8f55b66963acf2810512a244e17d7b79");
-    console.log('✅ Bmob 初始化成功');
+    if (typeof Bmob !== 'undefined') {
+      Bmob.initialize("055bbfab769cf4ca035e9a97bdd2a015", "8f55b66963acf2810512a244e17d7b79");
+      console.log('✅ Bmob 初始化成功');
+    } else {
+      console.error('❌ Bmob SDK 未加载');
+    }
   } catch (e) {
     console.error('❌ Bmob 初始化失败:', e);
   }
@@ -2073,41 +2077,55 @@
         // 6. 减少备份频率（每10次同步才备份一次）
         if (Math.random() < 0.1) { // 10%的概率创建备份
           console.log('创建数据备份...');
-          await this.backupCloudData();
+          try {
+            await this.backupCloudData();
+          } catch (e) {
+            console.error('备份失败:', e);
+          }
         }
         
         // 7. 使用Bmob进行云同步 - 批量操作优化
-        console.log('开始上传到Bmob...');
-        
-        // 将授权码存储在data字段中
-        const userDataWithLicenses = {
-          ...compressedData,
-          licenses: licenses // 将授权码存储在data中
-        };
-        
-        // 上传用户数据到云端
-        const userId = this.currentUserId || 'default_user';
-        const query = Bmob.Query('UserData');
-        const results = await query.equalTo('userId', userId).find();
-        
-        if (results.length > 0) {
-          // 更新现有数据
-          const userDataRecord = results[0];
-          userDataRecord.set('data', userDataWithLicenses);
-          userDataRecord.set('updatedAt', now);
-          userDataRecord.set('last_sync', now);
-          await userDataRecord.save();
+        if (typeof Bmob !== 'undefined') {
+          console.log('开始上传到Bmob...');
+          
+          try {
+            // 将授权码存储在data字段中
+            const userDataWithLicenses = {
+              ...compressedData,
+              licenses: licenses // 将授权码存储在data中
+            };
+            
+            // 上传用户数据到云端
+            const userId = this.currentUserId || 'default_user';
+            const query = Bmob.Query('UserData');
+            const results = await query.equalTo('userId', userId).find();
+            
+            if (results.length > 0) {
+              // 更新现有数据
+              const userDataRecord = results[0];
+              userDataRecord.set('data', userDataWithLicenses);
+              userDataRecord.set('updatedAt', now);
+              userDataRecord.set('last_sync', now);
+              await userDataRecord.save();
+            } else {
+              // 创建新数据
+              const userDataRecord = Bmob.Query('UserData');
+              userDataRecord.set('userId', userId);
+              userDataRecord.set('data', userDataWithLicenses);
+              userDataRecord.set('updatedAt', now);
+              userDataRecord.set('last_sync', now);
+              await userDataRecord.save();
+            }
+            
+            console.log('数据已同步到Bmob云存储');
+          } catch (bmobError) {
+            console.error('Bmob同步失败:', bmobError);
+            // Bmob同步失败不影响本地存储
+          }
         } else {
-          // 创建新数据
-          const userDataRecord = Bmob.Query('UserData');
-          userDataRecord.set('userId', userId);
-          userDataRecord.set('data', userDataWithLicenses);
-          userDataRecord.set('updatedAt', now);
-          userDataRecord.set('last_sync', now);
-          await userDataRecord.save();
+          console.log('Bmob SDK未加载，跳过云端同步');
         }
         
-        console.log('数据已同步到Bmob云存储');
         // 同步成功后更新本地数据的lastModified
         setUserData(compressedData);
         // 同步成功后重新加载用户数据，确保应用界面显示最新数据
@@ -5784,10 +5802,10 @@
         
         // 尝试从localStorage读取当前班级ID
         try {
-          currentClassId = localStorage.getItem(CURRENT_CLASS_KEY) || currentClassId;
+          currentClassId = localStorage.getItem('currentClassId') || currentClassId;
         } catch (e) {
           // localStorage不可用时，从内存存储读取
-          currentClassId = memoryStorage[CURRENT_CLASS_KEY] || currentClassId;
+          currentClassId = memoryStorage['currentClassId'] || currentClassId;
         }
         
         const classData = {};
@@ -5796,10 +5814,10 @@
             let raw = null;
             // 尝试从localStorage读取
             try {
-              raw = localStorage.getItem(CLASS_DATA_PREFIX + c.id);
+              raw = localStorage.getItem('class_data_' + c.id);
             } catch (e) {
               // localStorage不可用时，从内存存储读取
-              raw = memoryStorage[CLASS_DATA_PREFIX + c.id];
+              raw = memoryStorage['class_data_' + c.id];
             }
             if (raw) classData[c.id] = JSON.parse(raw);
           } catch (e) {}

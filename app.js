@@ -544,8 +544,8 @@
         var defaultV = localStorage.getItem('class_pet_default_user');
         if (defaultV) {
           const defaultData = JSON.parse(defaultV);
-          // 将默认键的数据迁移到用户特定的键
-          setUserData(defaultData);
+          // 直接返回默认数据，不进行迁移（避免递归）
+          // 数据迁移应该在登录时或其他合适的地方进行
           return defaultData;
         }
       }
@@ -576,8 +576,7 @@
       // 如果当前用户有ID但没有数据，尝试从内存中的默认键读取
       if (userId && memoryStorage['class_pet_default_user']) {
         const defaultData = memoryStorage['class_pet_default_user'];
-        // 将默认键的数据迁移到用户特定的键
-        setUserData(defaultData);
+        // 直接返回默认数据，不进行迁移（避免递归）
         return defaultData;
       }
       // 如果没有用户ID但默认键也没有数据，尝试从内存中的用户特定键读取
@@ -1199,105 +1198,15 @@
         alert('应用加载失败，请刷新页面重试');
       }
     },
-    saveUserData() {
+    async saveUserData() {
       try {
         // 1. 先获取当前数据作为备份
         const backupData = getUserData();
         
-        const data = getUserData();
+        // 2. 使用内部方法保存数据（不触发同步）
+        await this.saveUserDataInternal();
         
-        // 确保数据结构正确
-        if (!data.classes) {
-          data.classes = [];
-          data.currentClassId = null;
-        }
-        
-        // 更新全局设置
-        const systemNameEl = document.getElementById('settingSystemName');
-        const themeEl = document.getElementById('settingTheme');
-        
-        data.systemName = systemNameEl ? systemNameEl.value || '童心宠伴' : '童心宠伴';
-        data.theme = themeEl ? themeEl.value || 'coral' : 'coral';
-        
-        // 获取班级名称
-        const classNameEl = document.getElementById('settingClassName');
-        const className = classNameEl ? classNameEl.value.trim() : '';
-        
-        // 确保有班级数据
-        if (!this.currentClassId && data.classes.length > 0) {
-          this.currentClassId = data.classes[0].id;
-        }
-        
-        // 如果没有班级，创建一个默认班级
-        if (!this.currentClassId) {
-          const newClass = {
-            id: 'class_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            name: className || '默认班级',
-            students: this.students,
-            groups: this.groups,
-            groupPointHistory: this.groupPointHistory,
-            stagePoints: 20,
-            totalStages: 10,
-            plusItems: this.getPlusItems(),
-            minusItems: this.getMinusItems(),
-            prizes: this.getPrizes(),
-            lotteryPrizes: this.getLotteryPrizes(),
-            broadcastMessages: ['欢迎来到童心宠伴！🎉'],
-            petCategoryPhotos: this.getPetCategoryPhotos()
-          };
-          data.classes.push(newClass);
-          this.currentClassId = newClass.id;
-          this.currentClassName = newClass.name;
-        }
-        
-        // 更新班级数据
-        const currentClass = data.classes.find(c => c.id === this.currentClassId);
-        if (currentClass) {
-          currentClass.name = className || currentClass.name;
-          currentClass.students = this.students;
-          currentClass.groups = this.groups;
-          currentClass.groupPointHistory = this.groupPointHistory;
-          
-          const stagePointsEl = document.getElementById('settingStagePoints');
-          const stagesEl = document.getElementById('settingStages');
-          const broadcastEl = document.getElementById('broadcastContent');
-          
-          currentClass.stagePoints = stagePointsEl ? parseInt(stagePointsEl.value) || 20 : 20;
-          currentClass.totalStages = stagesEl ? parseInt(stagesEl.value) || 10 : 10;
-          currentClass.plusItems = this.getPlusItems();
-          currentClass.minusItems = this.getMinusItems();
-          currentClass.prizes = this.getPrizes();
-          currentClass.lotteryPrizes = this.getLotteryPrizes();
-          currentClass.broadcastMessages = broadcastEl ? broadcastEl.value.split('\n') : ['欢迎来到童心宠伴！🎉'];
-          currentClass.petCategoryPhotos = this.getPetCategoryPhotos();
-          this.currentClassName = currentClass.name;
-        }
-        
-        data.lastModified = new Date().toISOString();
-        
-        // 2. 尝试保存数据
-        try {
-          setUserData(data);
-          console.log('用户数据保存完成，最后修改时间:', data.lastModified);
-        } catch (saveError) {
-          console.error('保存用户数据失败，尝试恢复备份:', saveError);
-          // 保存失败时恢复备份
-          if (backupData) {
-            try {
-              setUserData(backupData);
-              console.log('已恢复数据备份');
-            } catch (restoreError) {
-              console.error('恢复备份失败:', restoreError);
-            }
-          }
-          throw saveError;
-        }
-        
-        // 设置数据变更标志
-        this.dataChanged = true;
-        this.pendingChanges++;
-        
-        // 使用批量同步机制
+        // 3. 使用批量同步机制
         this.scheduleSync();
       } catch (e) {
         console.error('保存用户数据失败:', e);
@@ -2245,8 +2154,17 @@
     async syncData() {
       if (!this.currentUserId) return;
       
-      // 1. 首先保存本地数据（优先本地存储）
-      this.saveUserData();
+      // 防止循环调用
+      if (this.isSyncingData) {
+        console.log('syncData 正在执行中，跳过重复调用');
+        return;
+      }
+      
+      this.isSyncingData = true;
+      
+      try {
+        // 1. 首先保存本地数据（优先本地存储）
+        await this.saveUserDataInternal();
       
       // 2. 仅在特定条件下才进行云同步
       const now = Date.now();
@@ -2289,6 +2207,98 @@
         }
       } else {
         console.log('仅保存到本地，跳过云端同步');
+      }
+      } finally {
+        // 释放同步锁
+        this.isSyncingData = false;
+      }
+    },
+    
+    // 内部保存方法，不触发同步
+    async saveUserDataInternal() {
+      try {
+        const data = getUserData();
+        
+        // 确保数据结构正确
+        if (!data.classes) {
+          data.classes = [];
+          data.currentClassId = null;
+        }
+        
+        // 更新全局设置
+        const systemNameEl = document.getElementById('settingSystemName');
+        const themeEl = document.getElementById('settingTheme');
+        
+        data.systemName = systemNameEl ? systemNameEl.value || '童心宠伴' : '童心宠伴';
+        data.theme = themeEl ? themeEl.value || 'coral' : 'coral';
+        
+        // 获取班级名称
+        const classNameEl = document.getElementById('settingClassName');
+        const className = classNameEl ? classNameEl.value.trim() : '';
+        
+        // 确保有班级数据
+        if (!this.currentClassId && data.classes.length > 0) {
+          this.currentClassId = data.classes[0].id;
+        }
+        
+        // 如果没有班级，创建一个默认班级
+        if (!this.currentClassId) {
+          const newClass = {
+            id: 'class_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            name: className || '默认班级',
+            students: this.students,
+            groups: this.groups,
+            groupPointHistory: this.groupPointHistory,
+            stagePoints: 20,
+            totalStages: 10,
+            plusItems: this.getPlusItems(),
+            minusItems: this.getMinusItems(),
+            prizes: this.getPrizes(),
+            lotteryPrizes: this.getLotteryPrizes(),
+            broadcastMessages: ['欢迎来到童心宠伴！🎉'],
+            petCategoryPhotos: this.getPetCategoryPhotos()
+          };
+          data.classes.push(newClass);
+          this.currentClassId = newClass.id;
+          this.currentClassName = newClass.name;
+        }
+        
+        // 更新班级数据
+        const currentClass = data.classes.find(c => c.id === this.currentClassId);
+        if (currentClass) {
+          currentClass.name = className || currentClass.name;
+          currentClass.students = this.students;
+          currentClass.groups = this.groups;
+          currentClass.groupPointHistory = this.groupPointHistory;
+          
+          const stagePointsEl = document.getElementById('settingStagePoints');
+          const stagesEl = document.getElementById('settingStages');
+          const broadcastEl = document.getElementById('broadcastContent');
+          
+          currentClass.stagePoints = stagePointsEl ? parseInt(stagePointsEl.value) || 20 : 20;
+          currentClass.totalStages = stagesEl ? parseInt(stagesEl.value) || 10 : 10;
+          currentClass.plusItems = this.getPlusItems();
+          currentClass.minusItems = this.getMinusItems();
+          currentClass.prizes = this.getPrizes();
+          currentClass.lotteryPrizes = this.getLotteryPrizes();
+          currentClass.broadcastMessages = broadcastEl ? broadcastEl.value.split('\n') : ['欢迎来到童心宠伴！🎉'];
+          currentClass.petCategoryPhotos = this.getPetCategoryPhotos();
+          this.currentClassName = currentClass.name;
+        }
+        
+        data.lastModified = new Date().toISOString();
+        
+        // 保存数据（不触发同步）
+        setUserData(data);
+        console.log('用户数据保存完成（内部方法），最后修改时间:', data.lastModified);
+        
+        // 设置数据变更标志
+        this.dataChanged = true;
+        this.pendingChanges++;
+        
+      } catch (e) {
+        console.error('内部保存用户数据失败:', e);
+        throw e;
       }
     },
     

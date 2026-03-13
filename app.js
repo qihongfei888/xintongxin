@@ -1189,11 +1189,11 @@
       const now = Date.now();
       const timeSinceLastSync = now - this.lastSyncAttempt;
       
-      // 条件：距离上次同步超过15分钟 或 累积了20个变更
+      // 条件：距离上次同步超过5分钟 或 累积了10个变更
       const shouldSyncToCloud = 
         navigator.onLine && 
         this.dataChanged && 
-        (timeSinceLastSync >= 15 * 60 * 1000 || this.pendingChanges >= 20);
+        (timeSinceLastSync >= 5 * 60 * 1000 || this.pendingChanges >= 10);
       
       if (shouldSyncToCloud) {
         console.log('满足云端同步条件，开始同步...');
@@ -1552,15 +1552,15 @@
         this.autoSyncInterval = null;
       }
       
-      // 每15分钟检查一次是否需要同步
+      // 每5分钟检查一次是否需要同步
       this.autoSyncInterval = setInterval(async () => {
         // 只有当网络可用且有数据变更时才同步
         if (navigator.onLine && this.dataChanged) {
           const now = Date.now();
           const timeSinceLastSync = now - this.lastSyncAttempt;
           
-          // 只有距离上次同步超过15分钟，或者累积了20个变更，才进行云端同步
-          if (timeSinceLastSync >= 15 * 60 * 1000 || this.pendingChanges >= 20) {
+          // 只有距离上次同步超过5分钟，或者累积了10个变更，才进行云端同步
+          if (timeSinceLastSync >= 5 * 60 * 1000 || this.pendingChanges >= 10) {
             console.log('自动同步：满足条件，开始云端同步');
             await this.syncData();
           } else {
@@ -1568,7 +1568,7 @@
             this.saveUserData();
           }
         }
-      }, 15 * 60 * 1000); // 每15分钟检查一次
+      }, 5 * 60 * 1000); // 每5分钟检查一次
     },
     
     // 禁用自动同步

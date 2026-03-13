@@ -368,8 +368,7 @@
   }
   
   function getUserData() {
-    if (!app.currentUserId) return {};
-    var key = USER_DATA_PREFIX + app.currentUserId;
+    var key = app.currentUserId ? USER_DATA_PREFIX + app.currentUserId : 'class_pet_default_user';
     if (useIndexedDB && indexedDBReady) {
       var cachedData = memoryStorage[key];
       if (cachedData) return cachedData;
@@ -431,8 +430,7 @@
   }
   
   function setUserData(data) {
-    if (!app.currentUserId) return;
-    var key = USER_DATA_PREFIX + app.currentUserId;
+    var key = app.currentUserId ? USER_DATA_PREFIX + app.currentUserId : 'class_pet_default_user';
     memoryStorage[key] = data;
     try {
       localStorage.setItem(key, JSON.stringify(data));
@@ -873,29 +871,54 @@
         const classNameEl = document.getElementById('settingClassName');
         const className = classNameEl ? classNameEl.value.trim() : '';
         
-        // 如果有班级，更新班级数据
-        if (this.currentClassId) {
-          const currentClass = data.classes.find(c => c.id === this.currentClassId);
-          if (currentClass) {
-            currentClass.name = className;
-            currentClass.students = this.students;
-            currentClass.groups = this.groups;
-            currentClass.groupPointHistory = this.groupPointHistory;
-            
-            const stagePointsEl = document.getElementById('settingStagePoints');
-            const stagesEl = document.getElementById('settingStages');
-            const broadcastEl = document.getElementById('broadcastContent');
-            
-            currentClass.stagePoints = stagePointsEl ? parseInt(stagePointsEl.value) || 20 : 20;
-            currentClass.totalStages = stagesEl ? parseInt(stagesEl.value) || 10 : 10;
-            currentClass.plusItems = this.getPlusItems();
-            currentClass.minusItems = this.getMinusItems();
-            currentClass.prizes = this.getPrizes();
-            currentClass.lotteryPrizes = this.getLotteryPrizes();
-            currentClass.broadcastMessages = broadcastEl ? broadcastEl.value.split('\n') : ['欢迎来到童心宠伴！🎉'];
-            currentClass.petCategoryPhotos = this.getPetCategoryPhotos();
-            this.currentClassName = className;
-          }
+        // 确保有班级数据
+        if (!this.currentClassId && data.classes.length > 0) {
+          this.currentClassId = data.classes[0].id;
+        }
+        
+        // 如果没有班级，创建一个默认班级
+        if (!this.currentClassId) {
+          const newClass = {
+            id: 'class_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            name: className || '默认班级',
+            students: this.students,
+            groups: this.groups,
+            groupPointHistory: this.groupPointHistory,
+            stagePoints: 20,
+            totalStages: 10,
+            plusItems: this.getPlusItems(),
+            minusItems: this.getMinusItems(),
+            prizes: this.getPrizes(),
+            lotteryPrizes: this.getLotteryPrizes(),
+            broadcastMessages: ['欢迎来到童心宠伴！🎉'],
+            petCategoryPhotos: this.getPetCategoryPhotos()
+          };
+          data.classes.push(newClass);
+          this.currentClassId = newClass.id;
+          this.currentClassName = newClass.name;
+        }
+        
+        // 更新班级数据
+        const currentClass = data.classes.find(c => c.id === this.currentClassId);
+        if (currentClass) {
+          currentClass.name = className || currentClass.name;
+          currentClass.students = this.students;
+          currentClass.groups = this.groups;
+          currentClass.groupPointHistory = this.groupPointHistory;
+          
+          const stagePointsEl = document.getElementById('settingStagePoints');
+          const stagesEl = document.getElementById('settingStages');
+          const broadcastEl = document.getElementById('broadcastContent');
+          
+          currentClass.stagePoints = stagePointsEl ? parseInt(stagePointsEl.value) || 20 : 20;
+          currentClass.totalStages = stagesEl ? parseInt(stagesEl.value) || 10 : 10;
+          currentClass.plusItems = this.getPlusItems();
+          currentClass.minusItems = this.getMinusItems();
+          currentClass.prizes = this.getPrizes();
+          currentClass.lotteryPrizes = this.getLotteryPrizes();
+          currentClass.broadcastMessages = broadcastEl ? broadcastEl.value.split('\n') : ['欢迎来到童心宠伴！🎉'];
+          currentClass.petCategoryPhotos = this.getPetCategoryPhotos();
+          this.currentClassName = currentClass.name;
         }
         
         data.lastModified = new Date().toISOString();

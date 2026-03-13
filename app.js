@@ -12,11 +12,11 @@
   // 实时同步管理类
   class RealtimeSync {
     constructor() {
-      this.pendingChanges = {};
-      this.syncTimeout = null;
-      this.syncInterval = 15000; // 15秒
-      this.channels = {};
-    }
+    this.pendingChanges = {};
+    this.syncTimeout = null;
+    this.syncInterval = 10000; // 10秒
+    this.channels = {};
+  }
 
     // 初始化同步
     init(userId) {
@@ -33,11 +33,20 @@
       query.subscribe().then((subscription) => {
         this.channels.userData = subscription;
         subscription.on('create', (object) => {
+          console.log('收到云端创建事件:', object);
           this.updateLocalData(object.get('data'));
         });
         subscription.on('update', (object) => {
+          console.log('收到云端更新事件:', object);
           this.updateLocalData(object.get('data'));
         });
+        subscription.on('delete', (object) => {
+          console.log('收到云端删除事件:', object);
+          // 处理删除事件
+        });
+        console.log('实时同步监听器已设置');
+      }).catch((error) => {
+        console.error('设置实时监听器失败:', error);
       });
     }
 
@@ -46,14 +55,24 @@
       try {
         // 使用与app对象一致的键名
         const key = this.userId ? `class_pet_user_data_${this.userId}` : 'class_pet_default_user';
+        console.log('更新本地数据，键名:', key);
+        console.log('更新数据:', data);
+        
+        // 先更新内存缓存
+        memoryStorage[key] = data;
+        
+        // 更新localStorage
         localStorage.setItem(key, JSON.stringify(data));
         // 同时更新默认键，确保数据不会丢失
         if (this.userId) {
           localStorage.setItem('class_pet_default_user', JSON.stringify(data));
+          memoryStorage['class_pet_default_user'] = data;
         }
+        
         console.log('本地数据已更新');
         // 重新加载用户数据
         if (window.app) {
+          console.log('触发app.loadUserData()');
           window.app.loadUserData();
         }
       } catch (e) {
@@ -4874,6 +4893,11 @@
           if (hasChanges) {
             this.saveData();
             console.log('数据自动同步到本地');
+            // 同时同步到云端
+            if (navigator.onLine) {
+              this.syncToCloud().catch(err => console.error('自动同步到云端失败:', err));
+              console.log('数据自动同步到云端');
+            }
           }
           
           // 定期检查设备授权状态
@@ -7726,8 +7750,12 @@
       if (!username) { alert('请输入用户名（手机号或邮箱）'); return; }
       if (!password) { alert('请输入密码'); return; }
       
+      console.log('登录尝试:', username);
+      
       // 检查是否为管理员账号
       const isAdmin = ADMIN_ACCOUNTS.some(a => a.username === username && a.password === password);
+      console.log('是否为管理员:', isAdmin);
+      
       if (isAdmin) {
         // 管理员登录
         app.currentUsername = username;
@@ -7738,8 +7766,12 @@
           isAdmin: true
         }));
         
+        console.log('管理员登录成功，用户ID:', app.currentUserId);
+        
         // 为管理员创建默认数据
         const userData = getUserData();
+        console.log('获取到的用户数据:', userData);
+        
         if (!userData.classes || userData.classes.length === 0) {
           const defaultClass = {
             id: 'class_' + Date.now(),
@@ -7759,10 +7791,35 @@
           userData.systemName = '童心宠伴';
           userData.theme = 'coral';
           setUserData(userData);
+          console.log('创建默认班级数据');
         }
         
-        // 加载数据并显示应用
+        // 优先从云端同步数据（确保多端数据一致）
+        let syncSuccess = false;
+        try {
+          console.log('管理员登录时从云端同步数据...');
+          // 强制从云端同步数据，不考虑时间差
+          syncSuccess = await app.syncFromCloud();
+          if (syncSuccess) {
+            console.log('从云端同步成功，使用云端数据');
+          } else {
+            console.log('云端数据较旧或没有数据，使用本地数据');
+            // 即使云端没有数据，也要尝试同步本地数据到云端
+            if (navigator.onLine) {
+              console.log('尝试将本地数据同步到云端...');
+              await app.syncToCloud();
+            }
+          }
+        } catch (e) {
+          console.error('云端同步失败，使用本地数据:', e);
+          // 即使同步失败，也要确保本地数据可用
+          console.log('使用本地数据，确保应用正常运行');
+        }
+        
+        // 无论同步是否成功，都重新加载用户数据，确保显示最新信息
         app.loadUserData();
+        
+        // 显示应用界面
         app.showApp();
         // 显示管理员入口
         document.getElementById('adminButton').style.display = 'block';
@@ -7771,11 +7828,12 @@
         // 启用实时同步和自动同步
         app.enableRealtimeSync();
         app.enableAutoSync();
-        console.log('管理员登录成功');
+        console.log('管理员登录完成');
         return;
       }
       
-      // 先从云端同步用户列表，再进行登录
+      // 不是管理员，先从云端同步用户列表，再进行登录
+      console.log('非管理员登录，开始同步用户列表');
       app.syncUserListFromCloud().then(function(syncSuccess) {
         console.log('用户列表同步结果:', syncSuccess);
         // 然后进行登录
@@ -7783,7 +7841,9 @@
           if (!success) {
             // 检查用户是否存在
             const users = app.getUserList();
+            console.log('用户列表:', users);
             const userExists = users.some(u => u.username === username);
+            console.log('用户是否存在:', userExists);
             if (!userExists) {
               alert('用户名不存在，请先注册');
             } else {

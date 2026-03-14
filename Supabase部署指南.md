@@ -6,6 +6,16 @@
 
 ---
 
+## GitHub Pages 更新后仍显示旧版？
+
+站点地址示例：**https://qihongfei888.github.io/xintongxin/**
+
+1. **确认发布源**：仓库 → **Settings** → **Pages** → Source 选 **Deploy from a branch**，Branch 选 **master**，Folder 选 **/ (root)**，保存。
+2. **确认已更新**：浏览器打开站点 → 右键「查看网页源代码」→ 搜索 `app-version`，若为 `5-bmob-off` 且脚本为 `app.js?v=5` 即是最新（Bmob 已关）。
+3. **强制刷新**：**Ctrl+Shift+R** 或 **Ctrl+F5**；或无痕窗口打开上述地址，避免本地缓存。
+
+---
+
 ## 零、部署前准备
 
 - 确保项目中有 **config.js**（若没有，可复制 **config.example.js** 为 config.js，再填写第四步的 URL 和 Key）。

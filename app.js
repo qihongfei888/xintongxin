@@ -1,4 +1,9 @@
 (function () {
+  'use strict';
+  // 彻底停用 Bmob，避免任何 Bmob 请求（云同步已改为本地/Supabase）
+  if (typeof window !== 'undefined') {
+    window.Bmob = undefined;
+  }
   console.log('🚀 应用启动中...');
   
   // 检查存储空间
@@ -44,16 +49,9 @@
     window.storageInfo = info;
   });
   
-  // 初始化 Bmob
-  try {
-    if (typeof Bmob !== 'undefined') {
-      Bmob.initialize("055bbfab769cf4ca035e9a97bdd2a015", "8f55b66963acf2810512a244e17d7b79");
-      console.log('✅ Bmob 初始化成功');
-    } else {
-      console.error('❌ Bmob SDK 未加载');
-    }
-  } catch (e) {
-    console.error('❌ Bmob 初始化失败:', e);
+  // Bmob 已弃用，不再初始化（云同步改用本地/Supabase，见 Supabase部署指南.md）
+  if (typeof Bmob !== 'undefined') {
+    console.log('已跳过 Bmob 初始化，当前使用本地存储');
   }
   
 
@@ -74,39 +72,9 @@
       this.startAutoSync();
     }
 
-    // 设置实时监听器
+    // 设置实时监听器（Bmob 已弃用，不再订阅云端）
     setupRealtimeListener() {
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法设置实时监听器');
-        return;
-      }
-      
-      // 监听用户数据变化
-      try {
-        const query = Bmob.Query('UserData');
-        query.equalTo('userId', this.userId);
-        query.subscribe().then((subscription) => {
-          this.channels.userData = subscription;
-          subscription.on('create', (object) => {
-            console.log('收到云端创建事件:', object);
-            this.updateLocalData(object.get('data'));
-          });
-          subscription.on('update', (object) => {
-            console.log('收到云端更新事件:', object);
-            this.updateLocalData(object.get('data'));
-          });
-          subscription.on('delete', (object) => {
-            console.log('收到云端删除事件:', object);
-            // 处理删除事件
-          });
-          console.log('实时同步监听器已设置');
-        }).catch((error) => {
-          console.error('设置实时监听器失败:', error);
-        });
-      } catch (e) {
-        console.error('设置实时监听器失败:', e);
-      }
+      console.log('实时同步已关闭 Bmob，仅使用本地数据');
     }
 
     // 更新本地数据

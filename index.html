@@ -18,10 +18,10 @@
     }
   </style>
   <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Ma+Shan+Zheng&display=swap" rel="stylesheet" onerror="this.remove()">
-  <!-- Bmob SDK 加载脚本 -->
+  <!-- 已弃用：Bmob SDK 加载（为避免误用，线上版本不再加载 Bmob） -->
+  <!--
   <script src="Bmob-2.7.0.min.js"></script>
   <script>
-    // 检查Bmob是否加载成功
     setTimeout(function() {
       if (typeof Bmob !== 'undefined') {
         console.log('✅ Bmob SDK 本地文件加载成功');
@@ -30,6 +30,7 @@
       }
     }, 1000);
   </script>
+  -->
 </head>
 <body>
   <!-- 内联图标（确保任意电脑均能正常显示，不依赖 emoji/网络） -->
@@ -906,7 +907,7 @@
   <script src="config.js"></script>
   <script src="db.js?v=3"></script>
     <script src="data.js?v=3"></script>
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=4"></script>
     <script>
       // 图片懒加载
       document.addEventListener('DOMContentLoaded', function() {

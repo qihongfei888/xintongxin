@@ -1345,7 +1345,8 @@
         if (!data.theme) data.theme = 'coral';
         if (!data.classes) data.classes = [];
         if (!data.currentClassId) data.currentClassId = null;
-        setUserData(data);
+        // 不在这里调用 setUserData，避免在登录过程中出现问题
+        // setUserData(data);
       }
       
       // 后续版本的迁移可以在这里添加

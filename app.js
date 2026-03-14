@@ -209,18 +209,14 @@
         const results = await query.find();
         
         if (results.length > 0) {
-          // 更新现有数据
           const userData = results[0];
           userData.set('userId', queryUserId);
           userData.set('data', dataToSync);
-          userData.set('updatedAt', new Date().toISOString().toString());
           await userData.save();
         } else {
-          // 创建新数据
           const userData = Bmob.Query('UserData');
           userData.set('userId', queryUserId);
           userData.set('data', dataToSync);
-          userData.set('updatedAt', new Date().toISOString().toString());
           await userData.save();
         }
         
@@ -1834,17 +1830,13 @@
         const results = await query.equalTo('userId', 'user_list_global').find();
         
         if (results.length > 0) {
-          // 更新现有数据
           const userListData = results[0];
           userListData.set('data', { users: users });
-          userListData.set('updatedAt', now);
           await userListData.save();
         } else {
-          // 创建新数据
           const userListData = Bmob.Query('UserData');
           userListData.set('userId', 'user_list_global');
           userListData.set('data', { users: users });
-          userListData.set('updatedAt', now);
           await userListData.save();
         }
         
@@ -1906,22 +1898,18 @@
             const results = await query.equalTo('userId', user.id).find();
             
             if (results.length > 0) {
-              // 更新现有数据
               const userDataRecord = results[0];
               userDataRecord.set('data', userData);
               userDataRecord.set('username', user.username);
               userDataRecord.set('password', user.password);
-              userDataRecord.set('updatedAt', now);
               userDataRecord.set('last_sync', now);
               await userDataRecord.save();
             } else {
-              // 创建新数据
               const userDataRecord = Bmob.Query('UserData');
               userDataRecord.set('userId', user.id);
               userDataRecord.set('username', user.username);
               userDataRecord.set('password', user.password);
               userDataRecord.set('data', userData);
-              userDataRecord.set('updatedAt', now);
               userDataRecord.set('last_sync', now);
               await userDataRecord.save();
             }
@@ -2498,7 +2486,7 @@
             const userDataRecord = Bmob.Query('UserData');
             userDataRecord.set('userId', userIdStr);
             userDataRecord.set('data', typeof compressedData === 'string' ? compressedData : JSON.stringify(compressedData));
-            userDataRecord.set('updatedAt', now);
+            // 不设置 updatedAt：Bmob 保留字段，会报 code 105
             await userDataRecord.save();
             uploadOk = true;
             console.log('✅ 数据已通过 SDK 同步到 Bmob');
@@ -2632,10 +2620,10 @@
     // 使用 Bmob REST API 上传 UserData（与 SDK 使用同一套密匙/安全码）
     async syncToCloudViaRest(userIdStr, compressedData, now) {
       const url = 'https://api2.bmob.cn/1/classes/UserData';
+      // 不要传 updatedAt：Bmob 保留字段，传了会报 code 105
       const body = {
         userId: userIdStr,
-        data: typeof compressedData === 'string' ? compressedData : JSON.stringify(compressedData),
-        updatedAt: now
+        data: typeof compressedData === 'string' ? compressedData : JSON.stringify(compressedData)
       };
       try {
         const res = await fetch(url, {

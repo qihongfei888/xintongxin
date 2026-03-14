@@ -105,44 +105,42 @@
     // 初始化同步
     init(userId) {
       this.userId = userId;
-      this.setupRealtimeListener();
+      try {
+        this.setupRealtimeListener();
+      } catch (e) {
+        if (e && e.code === 415) {
+          console.warn('实时监听暂不可用(415)，将使用定时同步');
+        } else {
+          console.warn('实时监听设置失败，将使用定时同步:', e);
+        }
+      }
       this.startAutoSync();
     }
 
-    // 设置实时监听器
+    // 设置实时监听器（Bmob 2.5.30 可能报 415，失败时仅用定时同步）
     setupRealtimeListener() {
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法设置实时监听器');
-        return;
-      }
-      
-      // 监听用户数据变化
+      if (typeof Bmob === 'undefined') return;
+      const userIdStr = String(this.userId || 'default_user');
       try {
         const query = Bmob.Query('UserData');
-        // 确保userId是字符串类型
-        const userIdStr = String(this.userId || 'default_user');
         query.equalTo('userId', userIdStr);
         query.subscribe().then((subscription) => {
           this.channels.userData = subscription;
           subscription.on('create', (object) => {
-            console.log('收到云端创建事件:', object);
-            this.updateLocalData(object.get('data'));
+            if (object && object.get) this.updateLocalData(object.get('data'));
           });
           subscription.on('update', (object) => {
-            console.log('收到云端更新事件:', object);
-            this.updateLocalData(object.get('data'));
+            if (object && object.get) this.updateLocalData(object.get('data'));
           });
-          subscription.on('delete', (object) => {
-            console.log('收到云端删除事件:', object);
-            // 处理删除事件
-          });
+          subscription.on('delete', () => {});
           console.log('实时同步监听器已设置');
-        }).catch((error) => {
-          console.error('设置实时监听器失败:', error);
+        }).catch((err) => {
+          if (err && err.code === 415) console.warn('实时监听 415，已跳过');
+          else console.warn('实时监听失败:', err);
         });
       } catch (e) {
-        console.error('设置实时监听器失败:', e);
+        if (e && e.code === 415) throw e;
+        console.warn('设置实时监听异常:', e);
       }
     }
 
@@ -775,6 +773,10 @@
       // 同时更新默认键，确保数据不会丢失
       if (userId) {
         localStorage.setItem('class_pet_default_user', JSON.stringify(data));
+        // 同步写入本地备份键，刷新后若云端同步失败可从备份键加载
+        const backupKey = 'class_pet_local_' + userId;
+        const timestamp = (data && data.lastModified) || new Date().toISOString();
+        localStorage.setItem(backupKey, JSON.stringify({ data: data, timestamp: timestamp }));
       }
       // 如果没有用户ID但有保存的用户ID，也更新用户特定的键
       if (!userId) {
@@ -7197,7 +7199,12 @@
       // 切换到导入的班级
       data.currentClassId = classData.id;
       setUserData(data);
-      
+      // 确保刷新后能恢复当前用户，避免数据“消失”
+      if (this.currentUserId && this.currentUsername) {
+        try {
+          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ id: this.currentUserId, username: this.currentUsername }));
+        } catch (e) {}
+      }
       // 重新加载数据
       this.loadUserData();
       this.init();

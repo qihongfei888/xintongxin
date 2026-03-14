@@ -1664,10 +1664,16 @@ body::before {
 }
 .admin-section h3 {
   margin-top: 0;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   color: var(--text);
   border-bottom: 2px solid var(--primary);
   padding-bottom: 8px;
+}
+.admin-section-hint {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0 0 12px 0;
+  line-height: 1.5;
 }
 .license-controls {
   display: flex;
@@ -1726,6 +1732,18 @@ body::before {
   color: var(--text-secondary);
   margin-bottom: 8px;
 }
+.admin-user-usage-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.admin-user-usage-row label { font-size: 0.9rem; margin: 0; }
+.admin-user-usage-row input[type="number"] { padding: 4px 8px; }
 .admin-user-actions {
   display: flex;
   gap: 8px;

@@ -2683,6 +2683,20 @@
       }
     },
 
+    // 是否允许用云端/备份数据覆盖本地（防止空云端覆盖本地有效数据）
+    shouldOverwriteLocalWithCloud(localData, cloudData) {
+      if (!cloudData || typeof cloudData !== 'object') return false;
+      const localClasses = (localData && localData.classes) ? localData.classes : [];
+      const cloudClasses = (cloudData.classes && Array.isArray(cloudData.classes)) ? cloudData.classes : [];
+      const localHasData = localClasses.length > 0;
+      const cloudHasData = cloudClasses.length > 0;
+      if (localHasData && !cloudHasData) {
+        console.log('跳过用空云端数据覆盖本地数据，保留本地');
+        return false;
+      }
+      return true;
+    },
+
     // 从云存储同步
     async syncFromCloud() {
       if (!navigator.onLine) {
@@ -2724,9 +2738,14 @@
                     if (licenses && Array.isArray(licenses)) setLicenses(licenses);
                   } catch (e) {}
                 }
-                setUserData(updatedData);
-                syncSuccess = true;
-                console.log('从Bmob REST同步成功，数据已更新');
+                const localData = getUserData();
+                if (this.shouldOverwriteLocalWithCloud(localData, updatedData)) {
+                  setUserData(updatedData);
+                  syncSuccess = true;
+                  console.log('从Bmob REST同步成功，数据已更新');
+                } else {
+                  console.log('保留本地数据，未用云端覆盖');
+                }
               }
             }
           }
@@ -2829,22 +2848,23 @@
                   }
                 }
                 
-                // 保存数据
-                setUserData(updatedData);
-                
-                // 同时更新本地备份
-                try {
-                  const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
-                  localStorage.setItem(backupKey, JSON.stringify({
-                    data: updatedData,
-                    timestamp: cloudTimestamp
-                  }));
-                } catch (e) {
-                  console.error('本地备份失败:', e);
+                // 仅当云端数据有效且允许覆盖时才保存（防止空云端覆盖本地）
+                if (this.shouldOverwriteLocalWithCloud(localData, updatedData)) {
+                  setUserData(updatedData);
+                  try {
+                    const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
+                    localStorage.setItem(backupKey, JSON.stringify({
+                      data: updatedData,
+                      timestamp: cloudTimestamp
+                    }));
+                  } catch (e) {
+                    console.error('本地备份失败:', e);
+                  }
+                  console.log('从Bmob云存储同步成功，数据已更新');
+                  syncSuccess = true;
+                } else {
+                  console.log('保留本地数据，未用云端覆盖');
                 }
-                
-                console.log('从Bmob云存储同步成功，数据已更新');
-                syncSuccess = true;
               }
             }
           } catch (bmobError) {
@@ -2885,9 +2905,12 @@
                             if (licenses && Array.isArray(licenses)) setLicenses(licenses);
                           } catch (e) {}
                         }
-                        setUserData(updatedData);
-                        syncSuccess = true;
-                        console.log('Bmob 415 降级：已用云端数据更新本地');
+                        const localData = getUserData();
+                        if (this.shouldOverwriteLocalWithCloud(localData, updatedData)) {
+                          setUserData(updatedData);
+                          syncSuccess = true;
+                          console.log('Bmob 415 降级：已用云端数据更新本地');
+                        }
                       }
                     }
                   }
@@ -2908,11 +2931,13 @@
               try {
                 const parsedBackup = JSON.parse(backupData);
                 console.log('从本地存储恢复数据');
-                // 检查数据是否有效
                 if (parsedBackup.data && this.validateUserData(parsedBackup.data)) {
-                  setUserData(parsedBackup.data);
-                  console.log('本地数据恢复成功');
-                  syncSuccess = true;
+                  const localData = getUserData();
+                  if (this.shouldOverwriteLocalWithCloud(localData, parsedBackup.data)) {
+                    setUserData(parsedBackup.data);
+                    console.log('本地数据恢复成功');
+                    syncSuccess = true;
+                  }
                 }
               } catch (e) {
                 console.error('解析本地备份数据失败:', e);
@@ -2945,26 +2970,24 @@
         this.syncing = false;
       }
       
-      // 2. 云存储没有数据或同步失败，尝试从本地备份加载
+      // 2. 云存储没有数据或同步失败，尝试从本地备份加载（不允许多端空备份覆盖本地有效数据）
       if (!syncSuccess) {
         try {
           const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
-          const localData = localStorage.getItem(backupKey);
+          const localDataStr = localStorage.getItem(backupKey);
           
-          if (localData) {
-            const parsedData = JSON.parse(localData);
+          if (localDataStr) {
+            const parsedData = JSON.parse(localDataStr);
             const currentData = getUserData();
             const currentTimestamp = currentData.lastModified || '1970-01-01T00:00:00.000Z';
-            
-            // 比较时间戳，选择较新的数据
-            if (parsedData.timestamp > currentTimestamp) {
-              // 更新本地数据
+            const backupData = parsedData.data;
+            const newerTimestamp = parsedData.timestamp > currentTimestamp;
+            if (newerTimestamp && backupData && this.shouldOverwriteLocalWithCloud(currentData, backupData)) {
               const updatedData = {
-                ...parsedData.data,
+                ...backupData,
                 lastModified: parsedData.timestamp
               };
               setUserData(updatedData);
-              
               console.log('从本地备份加载成功，数据已更新');
               syncSuccess = true;
             }

@@ -682,10 +682,9 @@
         <input type="number" id="prizeBadges" min="1" value="1">
       </div>
       <div class="form-group">
-        <label>奖品图片（可选）</label>
-        <input type="file" id="prizeImageInput" accept="image/*" onchange="app.handlePrizeImageSelect(event)">
-        <p class="upload-hint">支持 jpg、png 格式，最大 5MB</p>
-        <div id="prizeImagePreview" class="upload-preview"></div>
+        <label>奖品图标</label>
+        <input type="text" id="prizeIcon" placeholder="输入emoji，如 🎁、🍫、🍬 等">
+        <p class="upload-hint">可直接输入或从下方选择：🎁 🍫 🍬 🍪 🧸 ⭐ ✏️ 📓</p>
       </div>
       <button class="btn btn-primary" onclick="app.savePrize()">保存</button>
     </div>
@@ -904,7 +903,8 @@
   <div id="effectContainer" class="effect-container"></div>
 
   <script src="xlsx.full.min.js?v=3"></script>
-    <script src="db.js?v=3"></script>
+  <script src="config.js"></script>
+  <script src="db.js?v=3"></script>
     <script src="data.js?v=3"></script>
     <script src="app.js?v=3"></script>
     <script>

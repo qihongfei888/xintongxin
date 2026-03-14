@@ -139,39 +139,11 @@
       }
     }
 
-    // 同步数据到云端
+    // 同步数据到云端（旧版 Bmob，已停用）
     async syncToCloud(data) {
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法同步到云端');
-        return false;
-      }
-      
-      try {
-        const query = Bmob.Query('UserData');
-        const results = await query.equalTo('userId', this.userId).find();
-        
-        if (results.length > 0) {
-          // 更新现有数据
-          const userData = results[0];
-          userData.set('data', data);
-          userData.set('updatedAt', new Date().toISOString());
-          await userData.save();
-        } else {
-          // 创建新数据
-          const userData = Bmob.Query('UserData');
-          userData.set('userId', this.userId);
-          userData.set('data', data);
-          userData.set('updatedAt', new Date().toISOString());
-          await userData.save();
-        }
-        
-        console.log('数据已同步到云端');
-        return true;
-      } catch (e) {
-        console.error('同步到云端失败:', e);
-        return false;
-      }
+      // Bmob 已弃用，这里直接返回，避免影响本地数据
+      console.log('云同步(Bmob)已停用，仅使用本地/Supabase 存储。');
+      return false;
     }
 
     // 队列变更（节流）
@@ -768,6 +740,18 @@
     data[key] = value;
     setUserData(data);
   }
+
+  // 宠物照片基础路径：
+  // - 本地运行：使用本地 photos 包（不走网络）
+  // - GitHub Pages：自动使用 config.js 中配置的 R2 路径
+  const PET_PHOTO_BASE =
+    (typeof window !== 'undefined' &&
+      window.R2_PETS_BASE_URL &&
+      window.location &&
+      window.location.hostname &&
+      window.location.hostname.includes('github.io'))
+      ? window.R2_PETS_BASE_URL
+      : 'photos';
 
   const app = {
     students: [],
@@ -3176,11 +3160,17 @@
           // 第1阶段：宠物蛋 - 使用固定样式
           petHtml = `<div class="student-pet-preview"><div class="pet-egg" style="width: 100%; height: 100%; background: linear-gradient(135deg, #fef9c3 0%, #fde047 50%, #facc15 100%); border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3), inset 0 -10px 15px rgba(255, 255, 255, 0.3);"><span style="font-size: 2.5rem; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">🥚</span></div></div>`;
         } else if ((s.pet.stage || 0) >= totalStages) {
-          // 已完成：成熟期 - 调用本地照片
-          petHtml = `<div class="student-pet-preview"><img src="photos/${s.pet.typeId}/mature/${s.pet.breedId}_stage3.jpg" class="pet-img-stage" onerror="this.src=''; this.onerror=null;"></div>`;
+          // 已完成：成熟期 - 使用图标（不依赖外部图片）
+          const type = PET_TYPES.find(t => t.id === s.pet.typeId);
+          const breed = type && type.breeds.find(b => b.id === s.pet.breedId);
+          const icon = (breed && breed.icon) || (type && type.icon) || '🐾';
+          petHtml = `<div class="student-pet-preview"><span class="pet-img" style="font-size:2.5rem">${icon}</span></div>`;
         } else {
-          // 中间阶段：成长期 - 调用本地照片
-          petHtml = `<div class="student-pet-preview"><img src="photos/${s.pet.typeId}/growing/${s.pet.breedId}_stage2.jpg" class="pet-img-stage" onerror="this.src=''; this.onerror=null;"></div>`;
+          // 中间阶段：成长期 - 使用图标（不依赖外部图片）
+          const type = PET_TYPES.find(t => t.id === s.pet.typeId);
+          const breed = type && type.breeds.find(b => b.id === s.pet.breedId);
+          const icon = (breed && breed.icon) || (type && type.icon) || '🐾';
+          petHtml = `<div class="student-pet-preview"><span class="pet-img" style="font-size:2.5rem">${icon}</span></div>`;
         }
       } else {
         petHtml = '<div class="student-pet-preview pet-empty"><span class="pet-img">🐣</span><small>未领养</small></div>';
@@ -3191,18 +3181,20 @@
       let progressText = '';
       let needPointsText = '';
       if (s.pet) {
-        if (s.pet.stage === 1) {
+        // 统一用 stage 变量，避免旧数据没有 s.pet.stage 时出现 undefined/10
+        const stage = s.pet.stage || 0;
+        if (stage === 1) {
           progressPercent = Math.min(100, ((s.pet.stageProgress || 0) / stagePoints) * 100);
           progressText = '🥚 宠物蛋';
           const need = Math.max(0, stagePoints - (s.pet.stageProgress || 0));
           needPointsText = `还需 ${need} 积分孵化`;
-        } else if ((s.pet.stage || 0) >= totalStages) {
+        } else if (stage >= totalStages) {
           progressPercent = 100;
           progressText = '已满级';
           needPointsText = '已完成全部升级！';
         } else {
           progressPercent = Math.min(100, ((s.pet.stageProgress || 0) / stagePoints) * 100);
-          progressText = `第${s.pet.stage}/${totalStages}阶段`;
+          progressText = `第${stage}/${totalStages}阶段`;
           const need = Math.max(0, stagePoints - (s.pet.stageProgress || 0));
           needPointsText = `还需 ${need} 积分升级`;
         }
@@ -3669,7 +3661,7 @@
                   <div class="current-pet">
                     ${s.pet.stage === 1 ? 
                       `<div class="pet-egg" style="width: 100px; height: 100px; background: linear-gradient(135deg, #fef9c3 0%, #fde047 50%, #facc15 100%); border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3), inset 0 -10px 15px rgba(255, 255, 255, 0.3);"><span style="font-size: 2.5rem; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">🥚</span></div>` : 
-                      `<img src="photos/${s.pet.typeId}/mature/${s.pet.breedId}_stage3.jpg" class="pet-img-stage" style="width: 100px; height: 100px; object-fit: cover;" onerror="this.src=''; this.onerror=null;">`
+                      `<img src="${PET_PHOTO_BASE}/${s.pet.typeId}/mature/${s.pet.breedId}_stage3.jpg" class="pet-img-stage" style="width: 100px; height: 100px; object-fit: cover;" onerror="this.src=''; this.onerror=null;">`
                     }
                     <div class="pet-name">${s.pet.name}</div>
                   </div>
@@ -4099,11 +4091,8 @@
             } else {
               const type = PET_TYPES.find(t => t.id === s.pet.typeId);
               const breed = type && type.breeds.find(b => b.id === s.pet.breedId);
-              const photoPath = `photos/${type.id}/mature/${breed.id}_stage3.jpg`;
-              petDisplay = `
-                <img src="${photoPath}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 50%; margin-bottom: 8px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
-                <span class="breed-icon" style="display:none">${(breed && breed.icon) || (type && type.icon) || '🐾'}</span>
-              `;
+              const icon = (breed && breed.icon) || (type && type.icon) || '🐾';
+              petDisplay = `<div style="width: 100px; height: 100px; border-radius: 50%; background: #fff; display:flex;align-items:center;justify-content:center;margin-bottom:8px;font-size:2.5rem;">${icon}</div>`;
               petName = (breed && breed.name) || (type && type.name);
             }
             document.getElementById('currentStudentPetInfo').innerHTML = `
@@ -4133,15 +4122,15 @@
                   <div style="width: 100px; height: 100px; background: linear-gradient(135deg, #fef9c3 0%, #fde047 50%, #facc15 100%); border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3), inset 0 -10px 15px rgba(255, 255, 255, 0.3); margin: 0 auto 8px;"><span style="font-size: 3rem; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">🥚</span></div>
                 `;
               } else if (isComplete) {
-                // 已完成：成熟期 - 调用本地照片
-                const photoPath = `photos/${type.id}/mature/${breed.id}_stage3.jpg`;
+                // 已完成：成熟期 - 调用照片（本地或 R2）
+                const photoPath = `${PET_PHOTO_BASE}/${type.id}/mature/${breed.id}_stage3.jpg`;
                 petDisplay = `
                   <img src="${photoPath}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 50%; margin-bottom: 8px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
                   <span class="breed-icon" style="display:none">${(breed && breed.icon) || (type && type.icon) || '🐾'}</span>
                 `;
               } else {
-                // 中间阶段：成长期 - 调用本地照片
-                const photoPath = `photos/${type.id}/growing/${breed.id}_stage2.jpg`;
+                // 中间阶段：成长期 - 调用照片（本地或 R2）
+                const photoPath = `${PET_PHOTO_BASE}/${type.id}/growing/${breed.id}_stage2.jpg`;
                 petDisplay = `
                   <img src="${photoPath}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 50%; margin-bottom: 8px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
                   <span class="breed-icon" style="display:none">${(breed && breed.icon) || (type && type.icon) || '🐾'}</span>
@@ -4188,8 +4177,8 @@
         let optionsHtml = '<div class="pet-adopt-options">';
         PET_TYPES.forEach(type => {
           type.breeds.forEach(breed => {
-            // 从照片包读取成长期照片，格式：photos/类别ID/growing/品种ID_stage2.jpg
-            const photoPath = `photos/${type.id}/growing/${breed.id}_stage2.jpg`;
+            // 从本地或 R2 读取成长期照片：pets/类别ID/growing/品种ID_stage2.jpg
+            const photoPath = `${PET_PHOTO_BASE}/${type.id}/growing/${breed.id}_stage2.jpg`;
             optionsHtml += `
               <div class="pet-breed-option" data-type="${type.id}" data-breed="${breed.id}" data-food="${this.escape(type.food)}">
                 <img src="${photoPath}" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; margin-bottom: 8px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
@@ -5026,7 +5015,7 @@
       const prizes = getStorage(STORAGE_KEYS.prizes, []);
       const html = prizes.map((p, i) => `
         <div class="prize-item-row">
-          ${p.image ? `<img src="${p.image}" alt="" style="width:40px;height:40px;border-radius:8px;object-fit:cover;">` : '<div class="no-prize-img">🎁</div>'}
+          <div class="prize-icon-display">${this.escape(p.icon || '🎁')}</div>
           <input type="text" value="${this.escape(p.name)}" placeholder="奖品名" data-i="${i}" data-f="name">
           <input type="number" value="${p.badges || 1}" placeholder="徽章" style="width:60px" data-i="${i}" data-f="badges">
           <label><input type="checkbox" ${p.enabled !== false ? 'checked' : ''} data-i="${i}" data-f="enabled"> 上架</label>
@@ -5053,44 +5042,24 @@
       document.getElementById('prizeEditId').value = '';
       document.getElementById('prizeName').value = '';
       document.getElementById('prizeBadges').value = '1';
-      document.getElementById('prizeImageInput').value = '';
-      document.getElementById('prizeImagePreview').innerHTML = '';
-      this._prizeImageData = null;
+      const iconInput = document.getElementById('prizeIcon');
+      if (iconInput) iconInput.value = '🎁';
       document.getElementById('prizeModal').classList.add('show');
     },
     closePrizeModal() {
       document.getElementById('prizeModal').classList.remove('show');
-      this._prizeImageData = null;
-    },
-    handlePrizeImageSelect(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      if (!file.type.startsWith('image/')) {
-        alert('请选择图片文件');
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        alert('图片大小不能超过5MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const preview = document.getElementById('prizeImagePreview');
-        preview.innerHTML = `<img src="${e.target.result}" style="max-width: 150px; max-height: 150px; border-radius: 8px;">`;
-        this._prizeImageData = e.target.result;
-      };
-      reader.readAsDataURL(file);
     },
     savePrize() {
       const id = document.getElementById('prizeEditId').value;
       const name = document.getElementById('prizeName').value.trim();
       const badges = parseInt(document.getElementById('prizeBadges').value, 10) || 1;
-      const image = this._prizeImageData || '';
+      const iconInput = document.getElementById('prizeIcon');
+      const icon = iconInput ? (iconInput.value.trim() || '🎁') : '🎁';
       const arr = getStorage(STORAGE_KEYS.prizes, []);
       if (id !== '') {
         const i = parseInt(id, 10);
-        if (arr[i]) arr[i] = { name, badges, image, enabled: arr[i].enabled !== false };
-      } else arr.push({ name, badges, image, enabled: true });
+        if (arr[i]) arr[i] = { name, badges, icon: icon, enabled: arr[i].enabled !== false };
+      } else arr.push({ name, badges, icon: icon, enabled: true });
       setStorage(STORAGE_KEYS.prizes, arr);
       this.saveData();
       this.closePrizeModal();

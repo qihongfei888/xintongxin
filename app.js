@@ -296,7 +296,12 @@
   const USER_LIST_KEY = 'class_pet_user_list';
   const USER_DATA_PREFIX = 'class_pet_user_data_';
   const CURRENT_USER_KEY = 'class_pet_current_user';
-  
+  const SESSION_ID_KEY = 'class_pet_session_id';
+
+  function generateSessionId() {
+    return 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 12);
+  }
+
   // 授权码管理
   const LICENSE_KEY = 'class_pet_licenses';
   const ACTIVATED_DEVICES_KEY = 'class_pet_activated_devices';
@@ -918,6 +923,22 @@
       document.getElementById('login-form').style.display = 'block';
       document.getElementById('register-form').style.display = 'none';
     },
+
+    // 单端登录：在其他设备登录后强制本端下线
+    forceLogout(message) {
+      try {
+        localStorage.removeItem(CURRENT_USER_KEY);
+        localStorage.removeItem(SESSION_ID_KEY);
+      } catch (e) {}
+      try {
+        memoryStorage[CURRENT_USER_KEY] = undefined;
+        memoryStorage[SESSION_ID_KEY] = undefined;
+      } catch (e) {}
+      this.currentUserId = null;
+      this.currentUsername = null;
+      this.showLoginPage();
+      if (message) alert(message);
+    },
     async login(username, password) {
       try {
         // 检查登录尝试次数
@@ -998,13 +1019,15 @@
             }));
           } catch (e) {
             console.warn('保存当前用户信息到localStorage失败:', e);
-            // 保存到内存存储
             memoryStorage[CURRENT_USER_KEY] = JSON.stringify({ 
               id: user.id, 
               username: user.username,
               deviceId: deviceId 
             });
           }
+          // 单端登录：生成会话 ID，登录后上传到云端以占用“当前端”
+          var loginSessionId = generateSessionId();
+          try { localStorage.setItem(SESSION_ID_KEY, loginSessionId); } catch (e) {}
           
           // 数据迁移：从旧存储导入到新的Bmob数据库
           try {
@@ -1014,19 +1037,17 @@
             console.error('数据迁移失败:', e);
           }
           
-          // 优先从云端同步数据（确保多端数据一致）
+          // 登录时先拉取云端最新数据（skipSessionCheck=true 避免被误判为“其他设备登录”）
           let syncSuccess = false;
           try {
-            console.log('登录时从云端同步数据...');
-            // 强制从云端同步数据，不考虑时间差
-            // 增加重试机制，确保同步成功
+            console.log('登录时从云端同步最新数据...');
             let retryCount = 0;
             const maxRetries = 3;
             const retryDelay = 2000;
             
             while (retryCount < maxRetries) {
               try {
-                syncSuccess = await this.syncFromCloud();
+                syncSuccess = await this.syncFromCloud(true);
                 if (syncSuccess) {
                   console.log('从云端同步成功，使用云端数据');
                   break;
@@ -1056,7 +1077,7 @@
             console.log('使用本地数据，确保应用正常运行');
           }
           
-          // 无论同步是否成功，都重新加载用户数据，确保显示最新信息
+          // 登录时确保界面展示云端最新数据（syncFromCloud 已写入本地，此处刷新到界面）
           this.loadUserData();
           
           // 对于新用户，确保默认数据结构同步到云端
@@ -1404,8 +1425,11 @@
           this.syncTimeout = null;
         }
         
-        // 移除本地存储的用户信息
-        try { localStorage.removeItem(CURRENT_USER_KEY); } catch (e) {}
+        // 移除本地存储的用户信息与会话（单端登录）
+        try {
+          localStorage.removeItem(CURRENT_USER_KEY);
+          localStorage.removeItem(SESSION_ID_KEY);
+        } catch (e) {}
         
         // 重置用户状态
         this.currentUserId = null;
@@ -2478,16 +2502,23 @@
           console.error('本地存储失败:', localError);
         }
         
-        // 6. 优先用 REST 上传，避免 SDK 触发 415；失败再尝试 SDK
+        // 6. 单端登录：上传时携带当前会话 ID，供其他端校验
         const userId = this.currentUserId || 'default_user';
         const userIdStr = String(userId);
-        let uploadOk = await this.syncToCloudViaRest(userIdStr, compressedData, now);
+        let sessionId = localStorage.getItem(SESSION_ID_KEY);
+        if (!sessionId) {
+          sessionId = generateSessionId();
+          try { localStorage.setItem(SESSION_ID_KEY, sessionId); } catch (e) {}
+        }
+        let uploadOk = await this.syncToCloudViaRest(userIdStr, compressedData, now, sessionId);
         if (!uploadOk && typeof Bmob !== 'undefined') {
           console.log('REST 上传未成功，尝试 SDK 上传...');
           try {
             const userDataRecord = Bmob.Query('UserData');
             userDataRecord.set('userId', userIdStr);
             userDataRecord.set('data', typeof compressedData === 'string' ? compressedData : JSON.stringify(compressedData));
+            userDataRecord.set('sessionId', sessionId);
+            userDataRecord.set('sessionUpdatedAt', now);
             // 不设置 updatedAt：Bmob 保留字段，会报 code 105
             await userDataRecord.save();
             uploadOk = true;
@@ -2620,13 +2651,16 @@
     },
     
     // 使用 Bmob REST API 上传 UserData（与 SDK 使用同一套密匙/安全码）
-    async syncToCloudViaRest(userIdStr, compressedData, now) {
+    async syncToCloudViaRest(userIdStr, compressedData, now, sessionId) {
       const url = 'https://api2.bmob.cn/1/classes/UserData';
-      // 不要传 updatedAt：Bmob 保留字段，传了会报 code 105
       const body = {
         userId: userIdStr,
         data: typeof compressedData === 'string' ? compressedData : JSON.stringify(compressedData)
       };
+      if (sessionId) {
+        body.sessionId = sessionId;
+        body.sessionUpdatedAt = now || new Date().toISOString();
+      }
       try {
         const res = await fetch(url, {
           method: 'POST',
@@ -2644,6 +2678,38 @@
         return false;
       } catch (e) {
         console.warn('Bmob REST 上传失败:', e);
+        return false;
+      }
+    },
+
+    // 仅更新云端 data 字段（不更新 sessionId），用于强制下线前保存本端数据
+    async pushDataOnlyToCloud(objectId, userData) {
+      if (!objectId || !navigator.onLine) return false;
+      try {
+        let data = this.migrateUserData(userData || getUserData());
+        if (!this.validateUserData(data)) return false;
+        const compressed = this.compressUserData(data);
+        const now = new Date().toISOString();
+        compressed.lastModified = now;
+        const url = 'https://api2.bmob.cn/1/classes/UserData/' + encodeURIComponent(objectId);
+        const res = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            'X-Bmob-Application-Id': BMOB_KEY1,
+            'X-Bmob-REST-API-Key': BMOB_KEY2,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            data: typeof compressed === 'string' ? compressed : JSON.stringify(compressed)
+          })
+        });
+        if (res.ok) {
+          console.log('强制下线前已保存数据到云端');
+          return true;
+        }
+        return false;
+      } catch (e) {
+        console.warn('强制下线前保存到云端失败:', e);
         return false;
       }
     },
@@ -2697,8 +2763,8 @@
       return true;
     },
 
-    // 从云存储同步
-    async syncFromCloud() {
+    // 从云存储同步。skipSessionCheck=true 表示本次是登录流程，不校验“其他设备登录”
+    async syncFromCloud(skipSessionCheck) {
       if (!navigator.onLine) {
         console.log('无网络连接，跳过云端同步');
         return false;
@@ -2721,6 +2787,18 @@
             results = results.slice(0, 1);
           }
           const row = results[0];
+          // 单端登录：云端 sessionId 与当前端不一致表示已在其他设备登录，下线前先保存本端数据到云端
+          if (!skipSessionCheck && row.sessionId) {
+            const mySession = localStorage.getItem(SESSION_ID_KEY);
+            if (mySession !== row.sessionId) {
+              this.syncing = false;
+              if (row.objectId) {
+                await this.pushDataOnlyToCloud(row.objectId, getUserData());
+              }
+              this.forceLogout('您已在其他设备登录，请重新登录');
+              return false;
+            }
+          }
           let cloudData = row.data;
           const cloudLicenses = row.licenses;
           const cloudTimestamp = String(row.updatedAt || '1970-01-01T00:00:00.000Z');
@@ -2786,6 +2864,17 @@
               }
             } else {
               const userDataRecord = sdkResults[0];
+              const cloudSessionId = userDataRecord.get && userDataRecord.get('sessionId');
+              if (!skipSessionCheck && cloudSessionId) {
+                const mySession = localStorage.getItem(SESSION_ID_KEY);
+                if (mySession !== cloudSessionId) {
+                  this.syncing = false;
+                  const objId = userDataRecord.id || (userDataRecord.get && userDataRecord.get('objectId'));
+                  if (objId) await this.pushDataOnlyToCloud(objId, getUserData());
+                  this.forceLogout('您已在其他设备登录，请重新登录');
+                  return false;
+                }
+              }
               let cloudData = userDataRecord.get('data');
               const cloudLicenses = userDataRecord.get('licenses');
               const cloudTimestamp = String(userDataRecord.get('updatedAt') || '1970-01-01T00:00:00.000Z');
@@ -2888,6 +2977,17 @@
                     return t2 - t1;
                   });
                   const userDataRecord = filtered[0];
+                  const fallbackSessionId = userDataRecord.get && userDataRecord.get('sessionId');
+                  if (!skipSessionCheck && fallbackSessionId) {
+                    const mySession = localStorage.getItem(SESSION_ID_KEY);
+                    if (mySession !== fallbackSessionId) {
+                      this.syncing = false;
+                      const objId = userDataRecord.id || (userDataRecord.get && userDataRecord.get('objectId'));
+                      if (objId) await this.pushDataOnlyToCloud(objId, getUserData());
+                      this.forceLogout('您已在其他设备登录，请重新登录');
+                      return false;
+                    }
+                  }
                   let cloudData = userDataRecord.get('data');
                   const cloudLicenses = userDataRecord.get('licenses');
                   const cloudTimestamp = String(userDataRecord.get('updatedAt') || '1970-01-01T00:00:00.000Z');
@@ -8576,6 +8676,8 @@
             try {
               console.log('自动登录时从云端同步数据...');
               await app.syncFromCloud();
+              // 若 syncFromCloud 内触发“其他设备已登录”并 forceLogout，则不再进入应用
+              if (!app.currentUserId) return;
             } catch (e) {
               console.error('云端同步失败，使用本地数据:', e);
             }
@@ -8663,7 +8765,7 @@
       console.log('是否为管理员:', isAdmin);
       
       if (isAdmin) {
-        // 管理员登录
+        // 管理员登录（单端登录：生成会话并拉取最新数据）
         app.currentUsername = username;
         app.currentUserId = 'admin_' + username;
         localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ 
@@ -8671,7 +8773,8 @@
           username: app.currentUsername,
           isAdmin: true
         }));
-        
+        var adminSessionId = generateSessionId();
+        try { localStorage.setItem(SESSION_ID_KEY, adminSessionId); } catch (e) {}
         console.log('管理员登录成功，用户ID:', app.currentUserId);
         
         // 为管理员创建默认数据
@@ -8700,12 +8803,11 @@
           console.log('创建默认班级数据');
         }
         
-        // 优先从云端同步数据（确保多端数据一致）
+        // 登录时先拉取云端最新数据（skipSessionCheck=true 表示本次登录不触发“其他设备登录”踢出）
         let syncSuccess = false;
         try {
-          console.log('管理员登录时从云端同步数据...');
-          // 强制从云端同步数据，不考虑时间差
-          syncSuccess = await app.syncFromCloud();
+          console.log('管理员登录时从云端同步最新数据...');
+          syncSuccess = await app.syncFromCloud(true);
           if (syncSuccess) {
             console.log('从云端同步成功，使用云端数据');
           } else {
@@ -8722,7 +8824,7 @@
           console.log('使用本地数据，确保应用正常运行');
         }
         
-        // 无论同步是否成功，都重新加载用户数据，确保显示最新信息
+        // 登录时确保界面展示云端最新数据
         app.loadUserData();
         
         // 显示应用界面

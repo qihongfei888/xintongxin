@@ -2629,10 +2629,8 @@
       return null;
     },
     
-    // 使用 Bmob REST API 上传 UserData，绕过 SDK 的 415 参数类型问题
+    // 使用 Bmob REST API 上传 UserData（与 SDK 使用同一套密匙/安全码）
     async syncToCloudViaRest(userIdStr, compressedData, now) {
-      const appId = '055bbfab769cf4ca035e9a97bdd2a015';
-      const restKey = '8f55b66963acf2810512a244e17d7b79';
       const url = 'https://api2.bmob.cn/1/classes/UserData';
       const body = {
         userId: userIdStr,
@@ -2643,8 +2641,8 @@
         const res = await fetch(url, {
           method: 'POST',
           headers: {
-            'X-Bmob-Application-Id': appId,
-            'X-Bmob-REST-API-Key': restKey,
+            'X-Bmob-Application-Id': BMOB_KEY1,
+            'X-Bmob-REST-API-Key': BMOB_KEY2,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(body)
@@ -2660,10 +2658,8 @@
       }
     },
 
-    // 使用 Bmob REST API 拉取 UserData，绕过 SDK 的 415 参数类型问题
+    // 使用 Bmob REST API 拉取 UserData（与 SDK 使用同一套密匙/安全码）
     async fetchUserDataViaRest(userIdStr) {
-      const appId = '055bbfab769cf4ca035e9a97bdd2a015';
-      const restKey = '8f55b66963acf2810512a244e17d7b79';
       const base = 'https://api2.bmob.cn/1/classes/UserData';
       const where = userIdStr ? encodeURIComponent(JSON.stringify({ userId: userIdStr })) : '';
       const url = where ? base + '?where=' + where : base + '?limit=100';
@@ -2671,8 +2667,8 @@
         const res = await fetch(url, {
           method: 'GET',
           headers: {
-            'X-Bmob-Application-Id': appId,
-            'X-Bmob-REST-API-Key': restKey,
+            'X-Bmob-Application-Id': BMOB_KEY1,
+            'X-Bmob-REST-API-Key': BMOB_KEY2,
             'Content-Type': 'application/json'
           }
         });
@@ -2688,7 +2684,11 @@
         }
         return list;
       } catch (e) {
-        console.warn('Bmob REST 拉取失败:', e);
+        if (e && e.message === 'Failed to fetch') {
+          console.warn('REST 拉取失败(多为跨域或网络)，已改用 SDK 或本地数据');
+        } else {
+          console.warn('Bmob REST 拉取失败:', e);
+        }
         return null;
       }
     },
@@ -2858,13 +2858,12 @@
               }
             }
           } catch (bmobError) {
-            console.error('Bmob同步失败:', bmobError);
-            console.error('错误详情:', {
-              code: bmobError.code,
-              message: bmobError.message,
-              stack: bmobError.stack
-            });
-            // 415 时降级：仅 find() 不传 where/limit，拉取后本地按 userId 过滤（limit 也可能触发 415）
+            if (bmobError && bmobError.code === 415) {
+              console.warn('云端同步暂不可用(415)，已使用本地数据，数据已保存在本设备');
+            } else {
+              console.error('Bmob同步失败:', bmobError);
+            }
+            // 415 时降级：仅 find() 不传 where/limit，拉取后本地按 userId 过滤
             if (bmobError.code === 415 && userIdStr) {
               try {
                 const fallbackQuery = Bmob.Query('UserData');

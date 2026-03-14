@@ -5,6 +5,23 @@
     window.Bmob = undefined;
   }
   console.log('🚀 应用启动中...');
+
+  // Supabase 客户端（用于云端同步）
+  let supabaseClient = null;
+  if (typeof window !== 'undefined' &&
+      window.supabase &&
+      window.SUPABASE_URL &&
+      window.SUPABASE_KEY &&
+      typeof window.supabase.createClient === 'function') {
+    try {
+      supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY);
+      console.log('✅ Supabase 客户端已初始化');
+    } catch (e) {
+      console.error('❌ Supabase 客户端初始化失败:', e);
+    }
+  } else {
+    console.warn('⚠️ Supabase 未完整配置（缺少 URL/KEY 或 SDK），当前仅使用本地/IndexedDB 存储');
+  }
   
   // 检查存储空间
   async function checkStorageSpace() {
@@ -107,11 +124,36 @@
       }
     }
 
-    // 同步数据到云端（旧版 Bmob，已停用）
+    // 使用 Supabase 同步用户数据（多端实时）
     async syncToCloud(data) {
-      // Bmob 已弃用，这里直接返回，避免影响本地数据
-      console.log('云同步(Bmob)已停用，仅使用本地/Supabase 存储。');
-      return false;
+      if (!supabaseClient) {
+        console.log('Supabase 未配置，RealtimeSync 仅做本地更新');
+        return false;
+      }
+
+      try {
+        const userIdStr = String(this.userId || 'default_user');
+        const payload = {
+          id: userIdStr,
+          data: data || this.getLocalData() || {},
+          updated_at: new Date().toISOString()
+        };
+
+        const { error } = await supabaseClient
+          .from('users')
+          .upsert(payload, { onConflict: 'id' });
+
+        if (error) {
+          console.error('RealtimeSync Supabase 同步失败:', error);
+          return false;
+        }
+
+        console.log('RealtimeSync 已同步到 Supabase');
+        return true;
+      } catch (e) {
+        console.error('RealtimeSync Supabase 同步异常:', e);
+        return false;
+      }
     }
 
     // 队列变更（节流）
@@ -776,6 +818,15 @@
     },
     async login(username, password) {
       try {
+        // 每次登录前先清理本地会话状态，避免脏数据导致“自动登录”
+        this.currentUserId = null;
+        this.currentUsername = null;
+        try {
+          localStorage.removeItem(CURRENT_USER_KEY);
+        } catch (e) {
+          console.warn('清理当前登录状态失败（已忽略）:', e);
+        }
+
         // 检查登录尝试次数
         if (!checkLoginAttempts(username)) {
           alert('登录尝试次数过多，请10分钟后再试');
@@ -874,7 +925,7 @@
           let syncSuccess = false;
           try {
             console.log('登录时从云端同步数据...');
-            // 强制从云端同步数据，不考虑时间差
+            // 同步数据，考虑时间差
             syncSuccess = await this.syncFromCloud();
             if (syncSuccess) {
               console.log('从云端同步成功，使用云端数据');
@@ -917,6 +968,17 @@
         return false;
       } catch (e) {
         console.error('登录失败:', e);
+        // 出现异常时，强制回到登录页并清理会话，防止误登录
+        this.currentUserId = null;
+        this.currentUsername = null;
+        try {
+          localStorage.removeItem(CURRENT_USER_KEY);
+        } catch (clearError) {
+          console.warn('清理登录状态失败（已忽略）:', clearError);
+        }
+        if (typeof this.showLoginPage === 'function') {
+          this.showLoginPage();
+        }
         // 根据错误类型显示不同的提示
         if (e.message && e.message.includes('存储空间不足')) {
           alert('登录失败：浏览器存储空间不足。\n\n解决方法：\n1. 清理浏览器缓存和历史记录\n2. 关闭其他标签页\n3. 使用隐私/无痕模式登录\n4. 更换浏览器尝试');
@@ -930,6 +992,15 @@
     },
     async register(username, password, licenseKey) {
       try {
+        // 每次注册前先清理本地会话状态，确保一定从“未登录”开始
+        this.currentUserId = null;
+        this.currentUsername = null;
+        try {
+          localStorage.removeItem(CURRENT_USER_KEY);
+        } catch (e) {
+          console.warn('清理当前登录状态失败（已忽略）:', e);
+        }
+
         // 检查密码强度
         const strength = checkPasswordStrength(password);
         if (strength < 2) {
@@ -1031,6 +1102,17 @@
         return true;
       } catch (e) {
         console.error('注册失败:', e);
+        // 出现异常时，强制回到登录页并清理会话，防止“注册失败却进入系统”
+        this.currentUserId = null;
+        this.currentUsername = null;
+        try {
+          localStorage.removeItem(CURRENT_USER_KEY);
+        } catch (clearError) {
+          console.warn('清理注册状态失败（已忽略）:', clearError);
+        }
+        if (typeof this.showLoginPage === 'function') {
+          this.showLoginPage();
+        }
         alert('注册失败，请重试');
         return false;
       }
@@ -2242,7 +2324,7 @@
       }
     },
     
-    // 同步到云存储 - 仅本地/备份（Bmob 已停用）
+    // 同步到云存储 - 本地备份 + Supabase
     async syncToCloud() {
       // 无网时不进行云同步
       if (!navigator.onLine) {
@@ -2274,7 +2356,7 @@
         // 3. 数据压缩（减少传输量）
         const compressedData = this.compressUserData(userData);
         
-        console.log('准备同步到本地/备份，用户ID:', this.currentUserId);
+        console.log('准备同步到本地/备份 + Supabase，用户ID:', this.currentUserId);
         console.log('同步时间:', now);
         console.log('授权码数量:', licenses.length);
         console.log('数据大小:', JSON.stringify(compressedData).length, 'bytes');
@@ -2286,25 +2368,42 @@
         try {
           const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
           localStorage.setItem(backupKey, JSON.stringify({
-            data: compressedData,
+            data: { ...compressedData, licenses },
             timestamp: now
           }));
-          console.log('数据已存储到本地');
+          console.log('数据已存储到本地备份');
         } catch (localError) {
           console.error('本地存储失败:', localError);
         }
-        
-        // 6. 减少备份频率（每10次同步才做额外备份）
-        if (Math.random() < 0.1) { // 10%的概率创建备份
-          console.log('创建数据备份...');
+
+        // 6. 写入 Supabase users 表（若已配置）
+        if (supabaseClient && this.currentUserId) {
           try {
-            await this.backupCloudData();
+            const payload = {
+              id: String(this.currentUserId),
+              data: {
+                ...compressedData,
+                licenses
+              },
+              updated_at: now
+            };
+
+            const { error } = await supabaseClient
+              .from('users')
+              .upsert(payload, { onConflict: 'id' });
+
+            if (error) {
+              console.error('Supabase 同步失败:', error);
+            } else {
+              console.log('✅ 数据已同步到 Supabase');
+            }
           } catch (e) {
-            console.error('备份失败:', e);
+            console.error('Supabase 同步异常:', e);
           }
+        } else {
+          console.log('Supabase 未配置或无当前用户ID，仅进行本地备份');
         }
-        // 7. 不再上传到 Bmob，后续仅保留 Supabase / 其他后端（见 Supabase部署指南.md）
-        
+
         // 同步成功后更新本地数据的lastModified
         setUserData(compressedData);
         // 同步成功后重新加载用户数据，确保应用界面显示最新数据
@@ -2380,28 +2479,77 @@
       return null;
     },
     
-    // 从云存储同步（Bmob 已停用，仅使用本地/备份）
+    // 从云存储同步（优先 Supabase，没有再用本地/备份）
     async syncFromCloud() {
-      // 直接使用本地备份 / 当前数据，不再访问 Bmob
       let syncSuccess = false;
 
-      try {
-        const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
-        const localData = localStorage.getItem(backupKey);
-        if (localData) {
-          const parsedData = JSON.parse(localData);
-          if (parsedData.data && this.validateUserData(parsedData.data)) {
-            const updatedData = {
-              ...parsedData.data,
-              lastModified: parsedData.timestamp || new Date().toISOString()
-            };
-            setUserData(updatedData);
-            console.log('从本地备份加载成功，数据已更新');
-            syncSuccess = true;
+      // 1. 先尝试从 Supabase 拉取
+      if (navigator.onLine && supabaseClient && this.currentUserId) {
+        try {
+          const { data, error } = await supabaseClient
+            .from('users')
+            .select('data, updated_at')
+            .eq('id', String(this.currentUserId))
+            .single();
+
+          if (!error && data && data.data && this.validateUserData(data.data)) {
+            // 获取本地数据的最后修改时间
+            const localData = getUserData();
+            const localLastModified = localData.lastModified;
+            const cloudLastModified = data.updated_at || new Date().toISOString();
+            
+            // 只有当云端数据比本地数据新时才覆盖本地数据
+            if (!localLastModified || new Date(cloudLastModified) > new Date(localLastModified)) {
+              const cloudData = {
+                ...data.data,
+                lastModified: cloudLastModified
+              };
+              setUserData(cloudData);
+              console.log('从 Supabase 拉取数据成功，已更新本地数据');
+              syncSuccess = true;
+            } else {
+              console.log('本地数据比云端数据新，跳过同步');
+              syncSuccess = false;
+            }
+          } else if (error && error.code !== 'PGRST116') {
+            console.warn('从 Supabase 获取数据失败:', error);
           }
+        } catch (e) {
+          console.error('Supabase 拉取异常:', e);
         }
-      } catch (e) {
-        console.error('从本地备份加载失败:', e);
+      }
+
+      // 2. 若 Supabase 未取到，再用本地备份
+      if (!syncSuccess) {
+        try {
+          const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
+          const localData = localStorage.getItem(backupKey);
+          if (localData) {
+            const parsedData = JSON.parse(localData);
+            if (parsedData.data && this.validateUserData(parsedData.data)) {
+              // 获取当前本地数据的最后修改时间
+              const currentLocalData = getUserData();
+              const currentLocalLastModified = currentLocalData.lastModified;
+              const backupLastModified = parsedData.timestamp || new Date().toISOString();
+              
+              // 只有当备份数据比当前本地数据新时才恢复
+              if (!currentLocalLastModified || new Date(backupLastModified) > new Date(currentLocalLastModified)) {
+                const updatedData = {
+                  ...parsedData.data,
+                  lastModified: backupLastModified
+                };
+                setUserData(updatedData);
+                console.log('从本地备份加载成功，数据已更新');
+                syncSuccess = true;
+              } else {
+                console.log('当前本地数据比备份数据新，跳过恢复');
+                syncSuccess = false;
+              }
+            }
+          }
+        } catch (e) {
+          console.error('从本地备份加载失败:', e);
+        }
       }
 
       // 标记数据已加载并刷新界面
@@ -8147,7 +8295,7 @@
         }
       });
     });
-    document.getElementById('register-form').addEventListener('submit', function (e) {
+    document.getElementById('register-form').addEventListener('submit', async function (e) {
       e.preventDefault();
       var username = (document.getElementById('registerUsername').value || '').trim();
       var password = (document.getElementById('registerPassword').value || '');
@@ -8156,11 +8304,14 @@
       if (!username) { alert('请输入用户名（手机号或邮箱）'); return; }
       if (!password) { alert('请设置密码'); return; }
       if (password !== passwordConfirm) { alert('两次密码不一致'); return; }
-      if (app.register(username, password, licenseKey)) {
-        // 注册成功
-      } else {
-        // 注册失败，错误信息已在register函数中显示
+
+      // 等待注册结果，只有成功时才认为进入系统
+      var success = await app.register(username, password, licenseKey);
+      if (!success) {
+        // 注册失败，错误信息已在 register 函数中显示
+        return;
       }
+      // 注册成功时，app.register 内部已经完成登录和界面初始化
     });
 
     

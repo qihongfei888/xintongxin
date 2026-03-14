@@ -1,39 +1,31 @@
-# 忽略文件
+# 忽略节点模块
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# 忽略本地数据存储
-*.local
-*.db
 
 # 忽略编辑器配置文件
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 
-# 忽略环境变量文件
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# 忽略构建输出
-build/
-dist/
-
-# 忽略操作系统文件
-Thumbs.db
+# 忽略系统文件
 .DS_Store
+Thumbs.db
+
+# 忽略配置文件
+config.js
+
+# 忽略备份文件
+*.bak
+*.backup
 
 # 忽略日志文件
-logs
 *.log
 
 # 忽略临时文件
-tmp/
-temp/
+*.tmp
+*.temp
+
+# 忽略构建文件
+dist/
+build/
+
+# 忽略嵌入的 git 仓库
+班级小管家/

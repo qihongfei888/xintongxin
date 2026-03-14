@@ -53,15 +53,33 @@
     async setItem(key, value) {
       await this.init();
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction(['userData'], 'readwrite');
-        const store = transaction.objectStore('userData');
-        const request = store.put({ key, value, updatedAt: Date.now() });
+        try {
+          const transaction = db.transaction(['userData'], 'readwrite');
+          const store = transaction.objectStore('userData');
+          const request = store.put({ key, value, updatedAt: Date.now() });
 
-        request.onsuccess = () => resolve(true);
-        request.onerror = (event) => {
-          console.error('IndexedDB 写入失败:', event.target.error);
-          reject(event.target.error);
-        };
+          request.onsuccess = () => resolve(true);
+          request.onerror = (event) => {
+            const err = event.target.error;
+            // 数据库正在关闭时的写入错误在实际使用中影响不大，这里降级为警告，避免吓到用户
+            if (err && err.name === 'InvalidStateError') {
+              console.warn('IndexedDB 写入被忽略（数据库正在关闭）:', err);
+              resolve(false);
+              return;
+            }
+            console.error('IndexedDB 写入失败:', err);
+            reject(err);
+          };
+        } catch (err) {
+          // 事务创建阶段的异常同样做降级处理
+          if (err && err.name === 'InvalidStateError') {
+            console.warn('IndexedDB 事务创建失败（数据库正在关闭），写入已忽略:', err);
+            resolve(false);
+          } else {
+            console.error('IndexedDB 写入异常:', err);
+            reject(err);
+          }
+        }
       });
     },
 

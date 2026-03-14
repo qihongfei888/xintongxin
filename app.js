@@ -2274,7 +2274,7 @@
       }
     },
     
-    // 同步到云存储 - 优化版，支持2000人同时使用
+    // 同步到云存储 - 仅本地/备份（Bmob 已停用）
     async syncToCloud() {
       // 无网时不进行云同步
       if (!navigator.onLine) {
@@ -2306,7 +2306,7 @@
         // 3. 数据压缩（减少传输量）
         const compressedData = this.compressUserData(userData);
         
-        console.log('准备同步到云端，用户ID:', this.currentUserId);
+        console.log('准备同步到本地/备份，用户ID:', this.currentUserId);
         console.log('同步时间:', now);
         console.log('授权码数量:', licenses.length);
         console.log('数据大小:', JSON.stringify(compressedData).length, 'bytes');
@@ -2314,7 +2314,7 @@
         // 4. 更新数据的最后修改时间
         compressedData.lastModified = now;
         
-        // 5. 优先使用本地存储
+        // 5. 写入本地备份（浏览器存储）
         try {
           const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
           localStorage.setItem(backupKey, JSON.stringify({
@@ -2326,7 +2326,7 @@
           console.error('本地存储失败:', localError);
         }
         
-        // 6. 减少备份频率（每10次同步才备份一次）
+        // 6. 减少备份频率（每10次同步才做额外备份）
         if (Math.random() < 0.1) { // 10%的概率创建备份
           console.log('创建数据备份...');
           try {
@@ -2335,55 +2335,14 @@
             console.error('备份失败:', e);
           }
         }
-        
-        // 7. 使用Bmob进行云同步 - 批量操作优化
-        if (typeof Bmob !== 'undefined') {
-          console.log('开始上传到Bmob...');
-          
-          try {
-            // 将授权码存储在data字段中
-            const userDataWithLicenses = {
-              ...compressedData,
-              licenses: licenses // 将授权码存储在data中
-            };
-            
-            // 上传用户数据到云端
-            const userId = this.currentUserId || 'default_user';
-            const query = Bmob.Query('UserData');
-            const results = await query.equalTo('userId', userId).find();
-            
-            if (results.length > 0) {
-              // 更新现有数据
-              const userDataRecord = results[0];
-              userDataRecord.set('data', userDataWithLicenses);
-              userDataRecord.set('updatedAt', now);
-              userDataRecord.set('last_sync', now);
-              await userDataRecord.save();
-            } else {
-              // 创建新数据
-              const userDataRecord = Bmob.Query('UserData');
-              userDataRecord.set('userId', userId);
-              userDataRecord.set('data', userDataWithLicenses);
-              userDataRecord.set('updatedAt', now);
-              userDataRecord.set('last_sync', now);
-              await userDataRecord.save();
-            }
-            
-            console.log('数据已同步到Bmob云存储');
-          } catch (bmobError) {
-            console.error('Bmob同步失败:', bmobError);
-            // Bmob同步失败不影响本地存储
-          }
-        } else {
-          console.log('Bmob SDK未加载，跳过云端同步');
-        }
+        // 7. 不再上传到 Bmob，后续仅保留 Supabase / 其他后端（见 Supabase部署指南.md）
         
         // 同步成功后更新本地数据的lastModified
         setUserData(compressedData);
         // 同步成功后重新加载用户数据，确保应用界面显示最新数据
         this.loadUserData();
         
-        // 8. 通知其他设备同步数据
+        // 8. 通知其他设备同步数据（本地事件）
         if (window.realtimeSync) {
           console.log('通知其他设备同步数据');
           // 这里可以添加推送通知逻辑，确保其他设备能够及时同步数据
@@ -2453,190 +2412,38 @@
       return null;
     },
     
-    // 从云存储同步
+    // 从云存储同步（Bmob 已停用，仅使用本地/备份）
     async syncFromCloud() {
-      // 无网时不进行云同步
-      if (!navigator.onLine) {
-        console.log('无网络连接，跳过云端同步');
-        return false;
-      }
-      
-      // 防止重复同步
-      if (this.syncing) {
-        console.log('正在同步中，跳过重复同步');
-        return false;
-      }
-      
-      this.syncing = true;
+      // 直接使用本地备份 / 当前数据，不再访问 Bmob
       let syncSuccess = false;
-      
+
       try {
-        // 1. 优先从云存储同步（确保多端数据一致）
-        console.log('开始从Bmob同步数据，用户ID:', this.currentUserId);
-        
-        if (typeof Bmob !== 'undefined') {
-          let results = [];
-          
-          try {
-            if (this.currentUserId) {
-              // 从Bmob查询用户数据
-              const query = Bmob.Query('UserData');
-              query.equalTo('userId', this.currentUserId);
-              results = await query.find();
-            } else {
-              // 没有用户ID时，查询最近更新的数据
-              const query = Bmob.Query('UserData');
-              query.order('updatedAt', { descending: true });
-              query.limit(1);
-              results = await query.find();
-            }
-            
-            console.log('Bmob返回数据:', results);
-            
-            if (results.length === 0) {
-              console.log('云端没有数据记录，准备上传本地数据');
-              const localData = getUserData();
-              if (Object.keys(localData).length > 0) {
-                console.log('本地有数据，上传到云端');
-                await this.syncToCloud();
-                syncSuccess = true;
-              } else {
-                console.log('本地也没有数据，跳过同步');
-              }
-            } else {
-              const userDataRecord = results[0];
-              const cloudData = userDataRecord.get('data');
-              const cloudTimestamp = userDataRecord.get('updatedAt') || '1970-01-01T00:00:00.000Z';
-              
-              console.log('云端数据内容:', cloudData);
-              console.log('云端更新时间:', cloudTimestamp);
-              
-              if (cloudData) {
-                const localData = getUserData();
-                const localTimestamp = localData.lastModified || '1970-01-01T00:00:00.000Z';
-                
-                console.log(`时间戳比较 - 本地: ${localTimestamp}, 云端: ${cloudTimestamp}`);
-                console.log(`本地数据:`, localData);
-                console.log(`云端数据:`, cloudData);
-                
-                // 总是从云端同步最新数据，不考虑时间差
-                console.log('从云端同步最新数据');
-                // 迁移和验证云端数据
-                let updatedData = this.migrateUserData(cloudData);
-                
-                // 验证数据
-                if (!this.validateUserData(updatedData)) {
-                  console.error('云端数据验证失败，跳过同步');
-                  return false;
-                }
-                
-                // 更新时间戳
-                updatedData.lastModified = cloudTimestamp;
-                
-                // 保存数据
-                setUserData(updatedData);
-                
-                // 同步授权码
-                if (updatedData.licenses) {
-                  console.log('同步云端授权码，数量:', updatedData.licenses.length);
-                  setLicenses(updatedData.licenses);
-                }
-                
-                // 同时更新本地备份
-                try {
-                  const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
-                  localStorage.setItem(backupKey, JSON.stringify({
-                    data: updatedData,
-                    timestamp: cloudTimestamp
-                  }));
-                } catch (e) {
-                  console.error('本地备份失败:', e);
-                }
-                
-                console.log('从Bmob云存储同步成功，数据已更新');
-                syncSuccess = true;
-              }
-            }
-          } catch (bmobError) {
-            console.error('Bmob同步失败:', bmobError);
-            // Bmob同步失败不影响本地存储
+        const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
+        const localData = localStorage.getItem(backupKey);
+        if (localData) {
+          const parsedData = JSON.parse(localData);
+          if (parsedData.data && this.validateUserData(parsedData.data)) {
+            const updatedData = {
+              ...parsedData.data,
+              lastModified: parsedData.timestamp || new Date().toISOString()
+            };
+            setUserData(updatedData);
+            console.log('从本地备份加载成功，数据已更新');
+            syncSuccess = true;
           }
-        } else {
-          console.log('Bmob SDK未加载，使用本地数据');
-          // 尝试从本地存储读取数据
-          try {
-            const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
-            const backupData = localStorage.getItem(backupKey);
-            if (backupData) {
-              try {
-                const parsedBackup = JSON.parse(backupData);
-                console.log('从本地存储恢复数据');
-                // 检查数据是否有效
-                if (parsedBackup.data && this.validateUserData(parsedBackup.data)) {
-                  setUserData(parsedBackup.data);
-                  console.log('本地数据恢复成功');
-                  syncSuccess = true;
-                }
-              } catch (e) {
-                console.error('解析本地备份数据失败:', e);
-              }
-            }
-          } catch (localError) {
-            console.error('读取本地存储失败:', localError);
-          }
-        }
-        
-        // 标记数据已加载，避免init中重复加载
-        this.dataLoaded = true;
-        // 立即加载更新后的数据到内存
-        this.loadUserData();
-        // 重新渲染界面以显示新数据
-        this.renderDashboard();
-        this.renderStudents();
-        this.renderHonor();
-        this.renderStore();
-        console.log('界面已重新渲染');
-        
-        // 即使本地数据更新，也要确保云端有数据
-        if (this.dataChanged) {
-          console.log('本地数据有变更，同步到云端');
-          await this.syncToCloud();
         }
       } catch (e) {
-        console.error('从云存储同步失败:', e);
-      } finally {
-        this.syncing = false;
+        console.error('从本地备份加载失败:', e);
       }
-      
-      // 2. 云存储没有数据或同步失败，尝试从本地备份加载
-      if (!syncSuccess) {
-        try {
-          const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
-          const localData = localStorage.getItem(backupKey);
-          
-          if (localData) {
-            const parsedData = JSON.parse(localData);
-            const currentData = getUserData();
-            const currentTimestamp = currentData.lastModified || '1970-01-01T00:00:00.000Z';
-            
-            // 比较时间戳，选择较新的数据
-            if (parsedData.timestamp > currentTimestamp) {
-              // 更新本地数据
-              const updatedData = {
-                ...parsedData.data,
-                lastModified: parsedData.timestamp
-              };
-              setUserData(updatedData);
-              
-              console.log('从本地备份加载成功，数据已更新');
-              syncSuccess = true;
-            }
-          }
-        } catch (localError) {
-          console.error('从本地备份加载失败:', localError);
-        }
-      }
-      
+
+      // 标记数据已加载并刷新界面
+      this.dataLoaded = true;
+      this.loadUserData();
+      this.renderDashboard();
+      this.renderStudents();
+      this.renderHonor();
+      this.renderStore();
+
       return syncSuccess;
   },
     

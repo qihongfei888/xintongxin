@@ -88,10 +88,12 @@
       return false;
     }
     try {
+      const uid = String(userId).trim();
       const payload = {
+        id: uid,
         username: String(username).trim(),
         password: String(password),
-        user_id: String(userId)
+        user_id: uid
       };
       const { error } = await supabaseClient
         .from('accounts')

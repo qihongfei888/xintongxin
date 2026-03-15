@@ -843,7 +843,9 @@
           }
         }
         
+        // 即使同步失败，也要获取本地用户列表
         const users = getUserList();
+        console.log('登录验证时的用户列表:', users);
         const user = users.find(u => u.username === username && u.password === password);
         if (user) {
           // 记录成功登录
@@ -8336,20 +8338,18 @@
       let userExistsLocally = localUsers.some(u => u.username === username);
       console.log('用户是否在本地存在:', userExistsLocally);
       
-      // 如果本地不存在，尝试从云端同步
-      if (!userExistsLocally) {
-        console.log('本地用户不存在，尝试从云端同步用户列表');
-        try {
-          const syncSuccess = await app.syncUserListFromCloud();
-          console.log('用户列表同步结果:', syncSuccess);
-          // 再次检查本地用户列表
-          localUsers = getUserList();
-          console.log('同步后本地用户列表:', localUsers);
-          userExistsLocally = localUsers.some(u => u.username === username);
-          console.log('同步后用户是否存在:', userExistsLocally);
-        } catch (e) {
-          console.error('同步用户列表失败:', e);
-        }
+      // 无论本地是否存在，都尝试从云端同步用户列表，确保数据最新
+      console.log('尝试从云端同步用户列表...');
+      try {
+        const syncSuccess = await app.syncUserListFromCloud();
+        console.log('用户列表同步结果:', syncSuccess);
+        // 再次检查本地用户列表
+        localUsers = getUserList();
+        console.log('同步后本地用户列表:', localUsers);
+        userExistsLocally = localUsers.some(u => u.username === username);
+        console.log('同步后用户是否存在:', userExistsLocally);
+      } catch (e) {
+        console.error('同步用户列表失败:', e);
       }
       
       // 进行登录

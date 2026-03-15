@@ -924,7 +924,7 @@
           // 优先从云端同步数据（确保多端数据一致）
           let syncSuccess = false;
           try {
-jiajia            console.log('登录时从云端同步数据...');
+            console.log('登录时从云端同步数据...');
             // 同步数据，考虑时间差
             syncSuccess = await this.syncFromCloud();
             if (syncSuccess) {
@@ -8357,7 +8357,7 @@ jiajia            console.log('登录时从云端同步数据...');
       app.login(username, password).then(function(success) {
         if (!success) {
           // 检查用户是否存在
-          const users = app.getUserList();
+          const users = getUserList();
           console.log('最终用户列表:', users);
           const userExists = users.some(u => u.username === username);
           console.log('最终用户是否存在:', userExists);

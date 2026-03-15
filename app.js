@@ -234,7 +234,7 @@
   // 管理员账号和密码
   const ADMIN_ACCOUNTS = [
     { username: '18844162799', password: 'QW200124.' },
-    { username: '18645803876', password: 'QW0124.' },
+    { username: '18645803876', password: 'QW200124.' },
     // 可以添加更多管理员账号
   ];
   

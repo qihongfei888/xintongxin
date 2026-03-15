@@ -79,6 +79,8 @@
 
   // 账号信息在 Supabase 中的辅助方法（accounts 表）
   async function upsertAccountToSupabase(username, password, userId) {
+    console.log('upsertAccountToSupabase 函数被调用:', { username, password, userId });
+    
     if (!navigator.onLine) {
       console.warn('无网络，跳过写入 Supabase 账号');
       return false;
@@ -115,6 +117,12 @@
       };
       
       console.log('准备写入 Supabase accounts 表:', payload);
+      
+      // 确保id不为空
+      if (!payload.id) {
+        console.error('Supabase 账号写入失败: payload.id 为空');
+        return false;
+      }
       
       const { error } = await supabaseClient
         .from('accounts')

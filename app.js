@@ -112,12 +112,14 @@
         .upsert(payload, { onConflict: 'username' });
       if (error) {
         console.error('Supabase 账号写入失败:', error);
+        console.log('⚠️ 账号未同步到云端，手机端可能无法登录。请检查 Supabase accounts 表及控制台错误。');
         return false;
       }
-      console.log('Supabase 账号已写入/更新:', payload.username);
+      console.log('✅ 账号已同步到云端，手机/其他设备可使用本账号登录');
       return true;
     } catch (e) {
       console.error('Supabase 账号写入异常:', e);
+      console.log('⚠️ 账号未同步到云端，手机端可能无法登录。请检查 Supabase accounts 表及控制台错误。');
       return false;
     }
   }

@@ -660,7 +660,40 @@
       console.error('从localStorage获取数据失败:', e);
     }
 
-    // 3. 当前用户完全没有历史数据：为该用户创建一份全新的默认数据结构
+    // 3. 尝试从默认键恢复数据（关键修复：防止数据丢失）
+    try {
+      const defaultDataStr = localStorage.getItem('class_pet_default_user');
+      if (defaultDataStr) {
+        const defaultData = JSON.parse(defaultDataStr);
+        if (defaultData && defaultData.classes && defaultData.classes.length > 0) {
+          console.log('从默认键恢复数据成功，班级数:', defaultData.classes.length);
+          memoryStorage[key] = defaultData;
+          localStorage.setItem(key, JSON.stringify(defaultData));
+          return defaultData;
+        }
+      }
+    } catch (e) {
+      console.error('从默认键恢复数据失败:', e);
+    }
+
+    // 4. 尝试从本地备份键恢复数据
+    try {
+      const backupKey = 'class_pet_local_' + userId;
+      const backupStr = localStorage.getItem(backupKey);
+      if (backupStr) {
+        const backupObj = JSON.parse(backupStr);
+        if (backupObj && backupObj.data && backupObj.data.classes && backupObj.data.classes.length > 0) {
+          console.log('从本地备份键恢复数据成功，班级数:', backupObj.data.classes.length);
+          memoryStorage[key] = backupObj.data;
+          localStorage.setItem(key, JSON.stringify(backupObj.data));
+          return backupObj.data;
+        }
+      }
+    } catch (e) {
+      console.error('从本地备份键恢复数据失败:', e);
+    }
+
+    // 5. 当前用户完全没有历史数据：为该用户创建一份全新的默认数据结构
     console.log('当前用户无任何历史数据，为该用户创建全新的默认数据结构');
     const data = {
       version: '1.0.0',
@@ -8783,8 +8816,9 @@
           
           if (navigator.onLine) {
             try {
-              console.log('自动登录时从云端同步数据...');
-              await app.syncFromCloud();
+              // 有数据端自动登录：传 true 表示“登录场景”，本地已有班级数据则不拿云端覆盖，避免数据消失
+              console.log('自动登录时从云端同步数据（登录场景保护：本地有数据则不覆盖）...');
+              await app.syncFromCloud(true);
               // 若 syncFromCloud 内触发“其他设备已登录”并 forceLogout，则不再进入应用
               if (!app.currentUserId) return;
             } catch (e) {

@@ -997,13 +997,10 @@
           // 生成设备指纹
           const deviceId = generateDeviceFingerprint();
           
-          // 检查设备是否已绑定
+          // 检查设备是否已绑定（支持多端同时登录，仅用于记录设备信息，不再强制单端在线）
           if (!user.devices) {
             user.devices = [];
           }
-          // 强制设置最大设备数为1，确保一个用户只能同时在线一个设备
-          user.maxDevices = 1;
-          
           const existingDevice = user.devices.find(d => d.id === deviceId);
           
           if (existingDevice) {
@@ -1011,22 +1008,13 @@
             existingDevice.lastLogin = new Date().toISOString();
             console.log('设备已绑定，更新登录时间');
           } else {
-            // 设备未绑定，检查是否已有设备
-            if (user.devices.length >= user.maxDevices) {
-              // 已有设备，强制下线
-              console.log('已有设备登录，强制下线');
-              // 清空设备列表，只保留当前设备
-              user.devices = [];
-              console.log('旧设备已强制下线');
-            }
-            
-            // 添加新设备
+            // 添加新设备到列表，用于设备管理展示
             user.devices.push({
               id: deviceId,
               name: navigator.userAgent || 'Unknown Device',
               lastLogin: new Date().toISOString()
             });
-            console.log('添加新设备:', deviceId);
+            console.log('添加新设备（多端登录允许）:', deviceId);
           }
           
           // 保存用户数据

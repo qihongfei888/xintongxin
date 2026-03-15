@@ -53,15 +53,32 @@
     async setItem(key, value) {
       await this.init();
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction(['userData'], 'readwrite');
-        const store = transaction.objectStore('userData');
-        const request = store.put({ key, value, updatedAt: Date.now() });
+        try {
+          const transaction = db.transaction(['userData'], 'readwrite');
+          const store = transaction.objectStore('userData');
+          const request = store.put({ key, value, updatedAt: Date.now() });
 
-        request.onsuccess = () => resolve(true);
-        request.onerror = (event) => {
-          console.error('IndexedDB 写入失败:', event.target.error);
-          reject(event.target.error);
-        };
+          request.onsuccess = () => resolve(true);
+          request.onerror = (event) => {
+            const err = event.target.error;
+            // IndexedDB 在页面关闭或数据库被销毁时可能抛出 InvalidStateError，这种情况直接忽略，数据仍然在内存和 localStorage 中
+            if (err && err.name === 'InvalidStateError') {
+              console.warn('IndexedDB 正在关闭，忽略本次写入错误（数据仍保存在本地其他存储）');
+              resolve(false);
+              return;
+            }
+            console.error('IndexedDB 写入失败:', err);
+            reject(err);
+          };
+        } catch (e) {
+          if (e && e.name === 'InvalidStateError') {
+            console.warn('IndexedDB 正在关闭，忽略本次写入错误（数据仍保存在本地其他存储）');
+            resolve(false);
+          } else {
+            console.error('IndexedDB 事务创建失败:', e);
+            reject(e);
+          }
+        }
       });
     },
 

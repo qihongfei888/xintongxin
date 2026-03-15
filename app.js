@@ -1730,9 +1730,9 @@
         return false;
       }
       
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法同步用户列表到云端');
+      // 检查Supabase是否加载
+      if (!supabaseClient) {
+        console.error('Supabase 客户端未初始化，无法同步用户列表到云端');
         return false;
       }
       
@@ -1740,26 +1740,21 @@
         const users = getUserList();
         const now = new Date().toISOString();
         
-        // 将用户列表存储在云端
-        const query = Bmob.Query('UserData');
-        const results = await query.equalTo('userId', 'user_list_global').find();
+        // 将用户列表存储在Supabase的users表中，使用特殊ID 'user_list_global'
+        const { error } = await supabaseClient
+          .from('users')
+          .upsert([{
+            id: 'user_list_global',
+            data: { users: users },
+            updated_at: now
+          }]);
         
-        if (results.length > 0) {
-          // 更新现有数据
-          const userListData = results[0];
-          userListData.set('data', { users: users });
-          userListData.set('updatedAt', now);
-          await userListData.save();
-        } else {
-          // 创建新数据
-          const userListData = Bmob.Query('UserData');
-          userListData.set('userId', 'user_list_global');
-          userListData.set('data', { users: users });
-          userListData.set('updatedAt', now);
-          await userListData.save();
+        if (error) {
+          console.error('Supabase 同步用户列表失败:', error);
+          return false;
         }
         
-        console.log('用户列表已同步到云端，用户数:', users.length);
+        console.log('用户列表已同步到Supabase，用户数:', users.length);
         return true;
       } catch (e) {
         console.error('同步用户列表到云端失败:', e);
@@ -2139,47 +2134,48 @@
     
     // 从云端同步用户列表
     async syncUserListFromCloud() {
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法从云端同步用户列表');
+      // 检查Supabase是否加载
+      if (!supabaseClient) {
+        console.error('Supabase 客户端未初始化，无法从云端同步用户列表');
         return false;
       }
       
       try {
-        // 从云端获取用户列表数据
-        const query = Bmob.Query('UserData');
-        query.equalTo('userId', 'user_list_global');
-        const results = await query.find();
+        // 从Supabase获取用户列表数据
+        const { data, error } = await supabaseClient
+          .from('users')
+          .select('data')
+          .eq('id', 'user_list_global')
+          .single();
         
-        if (results.length === 0) {
-          console.log('云端没有用户列表数据，尝试上传本地用户列表');
+        if (error) {
+          console.error('Supabase 获取用户列表失败:', error);
           // 云端没有数据时，上传本地用户列表
           await this.syncUserListToCloud();
           return true;
         }
         
-        const cloudData = results[0].get('data');
-        if (cloudData && cloudData.users) {
-          const cloudUsers = cloudData.users;
-          const localUsers = getUserList();
-          
-          // 合并用户列表（以云端为准，但保留本地的新用户）
-          const mergedUsers = [...cloudUsers];
-          localUsers.forEach(localUser => {
-            if (!mergedUsers.some(u => u.id === localUser.id)) {
-              mergedUsers.push(localUser);
-            }
-          });
-          
-          setUserList(mergedUsers);
-          console.log('用户列表已从云端同步，用户数:', mergedUsers.length);
-          return true;
-        } else {
+        if (!data || !data.data || !data.data.users) {
           console.log('云端用户列表数据为空，上传本地用户列表');
           // 云端数据为空时，上传本地用户列表
           await this.syncUserListToCloud();
           return true;
         }
+        
+        const cloudUsers = data.data.users;
+        const localUsers = getUserList();
+        
+        // 合并用户列表（以云端为准，但保留本地的新用户）
+        const mergedUsers = [...cloudUsers];
+        localUsers.forEach(localUser => {
+          if (!mergedUsers.some(u => u.id === localUser.id)) {
+            mergedUsers.push(localUser);
+          }
+        });
+        
+        setUserList(mergedUsers);
+        console.log('用户列表已从Supabase同步，用户数:', mergedUsers.length);
+        return true;
       } catch (e) {
         console.error('从云端同步用户列表失败:', e);
         // 即使同步失败，也要确保本地有用户列表

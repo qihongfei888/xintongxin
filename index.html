@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="app-version" content="5-bmob-off">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta name="app-version" content="6-cache-off">
   <title>童心宠伴</title>
   <link rel="stylesheet" href="styles.css?v=6">
   <style>
@@ -106,10 +108,21 @@
       <div class="admin-section">
         <h3>🎫 授权码管理</h3>
         <div class="license-controls">
+          <div class="license-config-row">
+            <label>有效天数</label>
+            <input type="number" id="licenseValidDays" value="365" min="1" max="3650" style="width:90px">
+            <span class="license-config-hint">（从生成当天算起，多长时间内可用）</span>
+          </div>
+          <div class="license-config-row">
+            <label>每日可用时间段</label>
+            <input type="text" id="licenseDailyTimeRange" placeholder="如 07:30-22:00，留空则不限时" style="width:160px">
+          </div>
+          <div class="license-buttons-row">
             <button type="button" class="btn btn-primary" onclick="app.generateNewLicense()">➕ 生成新授权码</button>
             <button type="button" class="btn btn-secondary" onclick="app.batchGenerateLicenses()">📋 批量生成授权码</button>
             <button type="button" class="btn btn-secondary" onclick="app.exportLicenses()">📥 导出授权码</button>
           </div>
+        </div>
         <div id="licensesList" class="licenses-list"></div>
       </div>
       <div class="admin-section">
@@ -684,9 +697,10 @@
         <input type="number" id="prizeBadges" min="1" value="1">
       </div>
       <div class="form-group">
-        <label>奖品图标</label>
-        <input type="text" id="prizeIcon" placeholder="输入emoji，如 🎁、🍫、🍬 等">
-        <p class="upload-hint">可直接输入或从下方选择：🎁 🍫 🍬 🍪 🧸 ⭐ ✏️ 📓</p>
+        <label>奖品图片（可选）</label>
+        <input type="file" id="prizeImageInput" accept="image/*" onchange="app.handlePrizeImageSelect(event)">
+        <p class="upload-hint">支持 jpg、png 格式，最大 5MB</p>
+        <div id="prizeImagePreview" class="upload-preview"></div>
       </div>
       <button class="btn btn-primary" onclick="app.savePrize()">保存</button>
     </div>
@@ -909,27 +923,65 @@
   <script src="config.js"></script>
   <script src="db.js?v=3"></script>
   <script src="data.js?v=3"></script>
-  <script src="app.js?v=7"></script>
-    <script>
-      // 图片懒加载
-      document.addEventListener('DOMContentLoaded', function() {
-        const lazyImages = document.querySelectorAll('img[data-src]');
-        
-        const imageObserver = new IntersectionObserver((entries, observer) => {
-          entries.forEach(entry => {
-            if (entry.isIntersecting) {
-              const img = entry.target;
-              img.src = img.dataset.src;
-              img.classList.remove('lazy');
-              imageObserver.unobserve(img);
+  <script src="app.js?v=9"></script>
+  <script>
+    // 登录处理
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('DOMContentLoaded事件触发');
+      
+      // 登录表单提交由 app.js 统一处理（含“用户不存在/密码错误”的详细提示），此处不再重复绑定
+      const loginForm = document.getElementById('login-form');
+      if (!loginForm && window.app && window.app.login) {
+        alert('系统尚未完全加载，请稍后刷新页面重试。');
+      }
+      
+      // 注册表单事件完全交给 app.js 处理，这里不再重复绑定，避免双重提示和逻辑冲突
+      
+      // 绑定登录标签切换事件
+      const loginTabs = document.querySelectorAll('.login-tab');
+      if (loginTabs.length > 0) {
+        console.log('找到登录标签');
+        loginTabs.forEach(tab => {
+          tab.addEventListener('click', function() {
+            const tabType = this.dataset.tab;
+            console.log('切换到标签:', tabType);
+            
+            // 切换标签样式
+            loginTabs.forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            
+            // 切换表单显示
+            if (tabType === 'login') {
+              document.getElementById('login-form').style.display = 'block';
+              document.getElementById('register-form').style.display = 'none';
+            } else if (tabType === 'register') {
+              document.getElementById('login-form').style.display = 'none';
+              document.getElementById('register-form').style.display = 'block';
             }
           });
         });
-        
-        lazyImages.forEach(img => {
-          imageObserver.observe(img);
+      } else {
+        console.log('未找到登录标签');
+      }
+      
+      // 图片懒加载
+      const lazyImages = document.querySelectorAll('img[data-src]');
+      
+      const imageObserver = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const img = entry.target;
+            img.src = img.dataset.src;
+            img.classList.remove('lazy');
+            imageObserver.unobserve(img);
+          }
         });
       });
-    </script>
+      
+      lazyImages.forEach(img => {
+        imageObserver.observe(img);
+      });
+    });
+  </script>
 </body>
 </html>

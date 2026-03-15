@@ -1123,10 +1123,15 @@
           this.currentUserId = user.id;
           this.currentUsername = user.username;
           
-          // 登录成功后将账号写入 Supabase accounts，便于其他设备用同一账号登录（解决「电脑端有数据、手机端提示用户不存在」）
+          // 登录成功后将账号写入 Supabase accounts，便于其他设备用同一账号登录
           if (navigator.onLine && supabaseClient) {
             try {
-              await upsertAccountToSupabase(user.username, password, user.id);
+              const ok = await upsertAccountToSupabase(user.username, password, user.id);
+              if (ok) {
+                console.log('✅ 账号已同步到云端，手机/其他设备可使用本账号登录');
+              } else {
+                console.warn('⚠️ 账号未同步到云端，手机端可能无法登录。请检查 Supabase accounts 表及控制台错误。');
+              }
             } catch (e) {
               console.warn('登录时同步账号到 Supabase 失败:', e);
             }

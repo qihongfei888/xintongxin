@@ -150,16 +150,23 @@
   async function checkAccountExistsInSupabase(username) {
     if (!supabaseClient || !navigator.onLine) return false;
     try {
+      // 首先检查用户列表全局数据
       const { data, error } = await supabaseClient
-        .from('accounts')
-        .select('username')
-        .eq('username', username)
-        .limit(1);
+        .from('users')
+        .select('data')
+        .eq('id', 'user_list_global')
+        .single();
+      
       if (error) {
         console.error('Supabase 检查账号是否存在失败:', error);
         return false;
       }
-      return !!(data && data.length > 0);
+      
+      if (data && data.data && data.data.users) {
+        return data.data.users.some(user => user.username === username);
+      }
+      
+      return false;
     } catch (e) {
       console.error('Supabase 检查账号是否存在异常:', e);
       return false;

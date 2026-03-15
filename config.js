@@ -1,6 +1,6 @@
 // 运行模式：'online' 用 Supabase 云同步；'offline' 只用本地存储
-// 随身U盘版默认使用离线模式
-window.RUN_MODE = 'offline';
+// 线上部署版本使用 online 模式
+window.RUN_MODE = 'online';
 
 // Supabase 配置（与你 Supabase 项目一致）
 window.SUPABASE_URL = 'https://cuipqszkjsxixmbrvwdg.supabase.co';

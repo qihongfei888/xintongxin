@@ -101,20 +101,32 @@
         return false;
       }
       
+      const usernameStr = String(username).trim();
+      if (!usernameStr) {
+        console.error('Supabase 账号写入失败: username 为空');
+        return false;
+      }
+      
       const payload = {
         id: uid,
-        username: String(username).trim(),
+        username: usernameStr,
         password: String(password),
         user_id: uid
       };
+      
+      console.log('准备写入 Supabase accounts 表:', payload);
+      
       const { error } = await supabaseClient
         .from('accounts')
         .upsert(payload, { onConflict: 'username' });
+      
       if (error) {
         console.error('Supabase 账号写入失败:', error);
         console.log('⚠️ 账号未同步到云端，手机端可能无法登录。请检查 Supabase accounts 表及控制台错误。');
+        console.log('错误详情:', error);
         return false;
       }
+      
       console.log('✅ 账号已同步到云端，手机/其他设备可使用本账号登录');
       return true;
     } catch (e) {

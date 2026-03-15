@@ -2231,8 +2231,6 @@
         } else {
           console.log('仅保存到本地，跳过云端同步');
         }
-      } catch (e) {
-        console.error('同步数据失败:', e);
       } finally {
         // 释放同步锁
         this.isSyncingData = false;

@@ -1765,10 +1765,14 @@
       }
     },
     
-    // 同步用户列表到云端
+    // 同步用户列表到云端（旧 Bmob 方案，当前若无 Bmob 则直接跳过）
     async syncUserListToCloud() {
       if (!navigator.onLine) {
         console.log('无网络连接，跳过用户列表同步');
+        return false;
+      }
+      if (typeof Bmob === 'undefined') {
+        console.log('当前未配置 Bmob，跳过用户列表同步（已改用 Supabase 账号表）');
         return false;
       }
       
@@ -3564,7 +3568,7 @@
       let petHtml = '';
       let badgeCount = this.getTotalBadgesEarned(s);
       
-      // 获取当前阶段
+      // 获取当前阶段（确保为数字，避免出现 undefined/10 这种显示）
       const currentStage = s.pet ? (s.pet.stage || 0) : 0;
       const theme = this.getCardThemeByLevel(currentStage);
       
@@ -3572,7 +3576,7 @@
         if (s.pet.stage === 1) {
           // 第1阶段：宠物蛋 - 使用固定样式
           petHtml = `<div class="student-pet-preview"><div class="pet-egg" style="width: 100%; height: 100%; background: linear-gradient(135deg, #fef9c3 0%, #fde047 50%, #facc15 100%); border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3), inset 0 -10px 15px rgba(255, 255, 255, 0.3);"><span style="font-size: 2.5rem; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">🥚</span></div></div>`;
-        } else if ((s.pet.stage || 0) >= totalStages) {
+        } else if (currentStage >= totalStages) {
           // 已完成：成熟期 - 调用本地照片
           if (s.pet.typeId && s.pet.breedId) {
             const photoPath = `photos/${s.pet.typeId}/mature/${s.pet.breedId}_stage3.jpg`;
@@ -3598,18 +3602,18 @@
       let progressText = '';
       let needPointsText = '';
       if (s.pet) {
-        if (s.pet.stage === 1) {
+        if (currentStage === 1) {
           progressPercent = Math.min(100, ((s.pet.stageProgress || 0) / stagePoints) * 100);
           progressText = '🥚 宠物蛋';
           const need = Math.max(0, stagePoints - (s.pet.stageProgress || 0));
           needPointsText = `还需 ${need} 积分孵化`;
-        } else if ((s.pet.stage || 0) >= totalStages) {
+        } else if (currentStage >= totalStages) {
           progressPercent = 100;
           progressText = '已满级';
           needPointsText = '已完成全部升级！';
         } else {
           progressPercent = Math.min(100, ((s.pet.stageProgress || 0) / stagePoints) * 100);
-          progressText = `第${s.pet.stage}/${totalStages}阶段`;
+          progressText = `第${currentStage}/${totalStages}阶段`;
           const need = Math.max(0, stagePoints - (s.pet.stageProgress || 0));
           needPointsText = `还需 ${need} 积分升级`;
         }
@@ -7734,6 +7738,33 @@
       this.loadBadgeAwardStudents();
       this.renderStore();
       alert('学生已删除');
+    },
+
+    // 删除当前班级的所有学生（仅影响当前登录账号、当前班级）
+    deleteAllStudentsInCurrentClass() {
+      if (!this.currentClassId) {
+        alert('请先在系统设置中选择班级');
+        return;
+      }
+      if (!this.students || this.students.length === 0) {
+        alert('当前班级没有学生可以删除');
+        return;
+      }
+      if (!confirm('确定要删除当前班级的所有学生吗？此操作不可恢复，且仅影响当前账号的本地/云端数据。')) {
+        return;
+      }
+
+      // 只清空当前班级的学生数组和相关缓存
+      this.students = [];
+      this.saveStudents();
+      this.renderStudents();
+      this.renderHonor();
+      this.renderDashboard();
+      this.renderStudentManage();
+      this.renderScoreHistory();
+      this.loadBadgeAwardStudents();
+      this.renderStore();
+      alert('当前班级的所有学生已删除');
     },
 
     // 加载勋章发放的学生列表

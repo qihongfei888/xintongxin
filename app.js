@@ -1052,6 +1052,17 @@
           return false;
         }
         
+        // 登录开始时先从云端同步用户列表，确保本地有最新的用户信息
+        if (navigator.onLine) {
+          try {
+            console.log('登录开始时从云端同步用户列表...');
+            await this.syncUserListFromCloud();
+            console.log('用户列表同步完成');
+          } catch (e) {
+            console.warn('同步用户列表失败:', e);
+          }
+        }
+        
         let users = getUserList();
         let user = users.find(u => u.username === username && u.password === password);
 
@@ -1067,7 +1078,7 @@
                 password: password,
                 createdAt: new Date().toISOString(),
                 devices: [],
-                maxDevices: 5,
+                maxDevices: 1,
                 lastLogin: new Date().toISOString(),
                 licenseKey: ''
               };
@@ -1078,9 +1089,12 @@
             }
             try {
               setUserList(users);
+              console.log('从 Supabase 获取的账号已保存到本地');
             } catch (saveError) {
               console.error('保存从 Supabase 获取的账号到本地失败:', saveError);
             }
+          } else {
+            console.log('Supabase 未找到账号，使用本地用户列表');
           }
         }
 
@@ -1227,6 +1241,17 @@
           // 启用实时同步和自动同步（减少频次）
           this.enableRealtimeSync();
           this.enableAutoSync();
+          
+          // 登录成功后，立即同步用户列表到云端，确保其他设备可以获取到最新的用户列表
+          if (navigator.onLine) {
+            try {
+              console.log('登录成功后同步用户列表到云端...');
+              await this.syncUserListToCloud();
+              console.log('用户列表同步到云端成功');
+            } catch (e) {
+              console.warn('登录后同步用户列表失败:', e);
+            }
+          }
           
           // 登录成功后，通知用户设备切换成功
           if (user.devices.length > 0 && user.devices[0].id !== deviceId) {

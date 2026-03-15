@@ -925,6 +925,11 @@
           // 保存用户数据
           try {
             setUserList(users);
+            // 登录成功后，将更新后的用户列表同步到云端
+            if (navigator.onLine) {
+              console.log('登录成功后同步用户列表到云端...');
+              await this.syncUserListToCloud();
+            }
           } catch (saveError) {
             console.error('保存用户列表失败:', saveError);
             alert('保存登录信息失败: ' + saveError.message);
@@ -1774,6 +1779,14 @@
       
       try {
         const users = getUserList();
+        
+        // 重要：只有当本地用户列表不为空时，才上传到云端
+        // 避免空列表覆盖云端数据
+        if (users.length === 0) {
+          console.log('本地用户列表为空，不上传，避免覆盖云端数据');
+          return false;
+        }
+        
         const now = new Date().toISOString();
         
         // 将用户列表存储在Supabase的users表中，使用特殊ID 'user_list_global'
@@ -2192,10 +2205,16 @@
           return false;
         }
         
-        if (!data || !data.data || !data.data.users) {
-          console.log('云端用户列表数据为空，上传本地用户列表');
-          // 只有当云端数据为空时，才上传本地用户列表
-          await this.syncUserListToCloud();
+        if (!data || !data.data || !data.data.users || data.data.users.length === 0) {
+          console.log('云端用户列表数据为空，检查本地用户列表');
+          const localUsers = getUserList();
+          // 只有当本地用户列表不为空时，才上传到云端
+          if (localUsers.length > 0) {
+            console.log('本地用户列表不为空，上传到云端');
+            await this.syncUserListToCloud();
+          } else {
+            console.log('本地用户列表也为空，不上传');
+          }
           return true;
         }
         

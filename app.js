@@ -840,12 +840,22 @@
             await this.syncUserListFromCloud();
           } catch (e) {
             console.error('同步用户列表失败:', e);
+            // 同步失败时，尝试使用本地用户列表
+            console.log('同步失败，尝试使用本地用户列表');
           }
         }
         
         // 即使同步失败，也要获取本地用户列表
-        const users = getUserList();
+        let users = getUserList();
         console.log('登录验证时的用户列表:', users);
+        
+        // 额外检查：如果本地用户列表为空，尝试重新加载
+        if (users.length === 0) {
+          console.log('本地用户列表为空，重新加载...');
+          users = getUserList();
+          console.log('重新加载后用户列表:', users);
+        }
+        
         const user = users.find(u => u.username === username && u.password === password);
         if (user) {
           // 记录成功登录
@@ -8346,6 +8356,17 @@
         console.log('同步后用户是否存在:', userExistsLocally);
       } catch (e) {
         console.error('同步用户列表失败:', e);
+        // 同步失败时，给用户一个提示
+        console.log('同步失败，尝试使用本地用户列表');
+      }
+      
+      // 额外检查：如果本地用户列表为空，尝试重新加载
+      if (localUsers.length === 0) {
+        console.log('本地用户列表为空，重新加载...');
+        localUsers = getUserList();
+        console.log('重新加载后本地用户列表:', localUsers);
+        userExistsLocally = localUsers.some(u => u.username === username);
+        console.log('重新加载后用户是否存在:', userExistsLocally);
       }
       
       // 进行登录

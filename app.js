@@ -1093,10 +1093,22 @@
                   break;
                 } else {
                   console.log('云端数据较旧或没有数据，使用本地数据');
-                  // 即使云端没有数据，也要尝试同步本地数据到云端
+                  // 只有当本地确实有有效数据时，才把本地同步到云端，避免“空白端”把云端数据清空
                   if (navigator.onLine) {
-                    console.log('尝试将本地数据同步到云端...');
-                    await this.syncToCloud();
+                    try {
+                      const localDataAfterLogin = getUserData();
+                      const localClassesAfterLogin = (localDataAfterLogin && Array.isArray(localDataAfterLogin.classes))
+                        ? localDataAfterLogin.classes
+                        : [];
+                      if (localClassesAfterLogin.length > 0) {
+                        console.log('本地存在有效数据，尝试将本地数据同步到云端...');
+                        await this.syncToCloud();
+                      } else {
+                        console.log('本地没有有效数据，不执行同步到云端，避免覆盖云端已有数据');
+                      }
+                    } catch (checkErr) {
+                      console.warn('检查本地数据是否存在时出错，跳过登录阶段的上行同步:', checkErr);
+                    }
                   }
                   break;
                 }

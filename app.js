@@ -4551,14 +4551,18 @@
                   <span class="breed-icon" style="display:none">${(breed && breed.icon) || (type && type.icon) || '🐾'}</span>
                 `;
               } else {
-                // 中间阶段：成长期 - 调用本地照片
-                const photoPath = `photos/${type.id}/growing/${breed.id}_stage2.jpg`;
-                petDisplayContent = `
-                  <img src="${photoPath}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 50%; margin-bottom: 8px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
-                  <span class="breed-icon" style="display:none">${(breed && breed.icon) || (type && type.icon) || '🐾'}</span>
-                `;
+                // 中间阶段：成长期 - 调用本地照片（安全判空，避免 type 或 breed 未定义时报错）
+                if (type && breed && type.id && breed.id) {
+                  const photoPath = `photos/${type.id}/growing/${breed.id}_stage2.jpg`;
+                  petDisplayContent = `
+                    <img src="${photoPath}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 50%; margin-bottom: 8px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                    <span class="breed-icon" style="display:none">${(breed && breed.icon) || (type && type.icon) || '🐾'}</span>
+                  `;
+                } else {
+                  petDisplayContent = `<span class="pet-img">🐾</span>`;
+                }
               }
-              petName = (breed && breed.name) || (type && type.name);
+              petName = (breed && breed.name) || (type && type.name) || '宠物';
               foodStr = type && type.food ? type.food : '🍖';
             }
             const progress = s.pet.stageProgress || 0;

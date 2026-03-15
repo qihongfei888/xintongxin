@@ -2186,14 +2186,15 @@
         
         if (error) {
           console.error('Supabase 获取用户列表失败:', error);
-          // 云端没有数据时，上传本地用户列表
-          await this.syncUserListToCloud();
-          return true;
+          // 当获取失败时，不要上传本地用户列表，避免覆盖云端数据
+          // 特别是在手机端，本地可能没有用户列表，会上传空列表覆盖云端数据
+          console.log('获取用户列表失败，不上传本地列表，避免覆盖云端数据');
+          return false;
         }
         
         if (!data || !data.data || !data.data.users) {
           console.log('云端用户列表数据为空，上传本地用户列表');
-          // 云端数据为空时，上传本地用户列表
+          // 只有当云端数据为空时，才上传本地用户列表
           await this.syncUserListToCloud();
           return true;
         }

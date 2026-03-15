@@ -78,10 +78,13 @@
     const client = ensureSupabaseClient();
     if (!client || !navigator.onLine) return false;
     try {
+      const normalizedUserId = String(userId).trim();
       const payload = {
+        // 为了兼容当前 Supabase 表结构，直接用 userId 作为主键 id
+        id: normalizedUserId,
         username: String(username).trim(),
         password: String(password),
-        user_id: String(userId).trim()
+        user_id: normalizedUserId
       };
       const { error } = await client
         .from('accounts')

@@ -1121,6 +1121,15 @@
           this.currentUserId = user.id;
           this.currentUsername = user.username;
           
+          // 登录成功后将账号写入 Supabase accounts，便于其他设备用同一账号登录（解决「电脑端有数据、手机端提示用户不存在」）
+          if (navigator.onLine && supabaseClient) {
+            try {
+              await upsertAccountToSupabase(user.username, password, user.id);
+            } catch (e) {
+              console.warn('登录时同步账号到 Supabase 失败:', e);
+            }
+          }
+          
           // 保存当前用户信息
           try {
             localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ 

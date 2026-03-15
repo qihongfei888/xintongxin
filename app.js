@@ -924,7 +924,7 @@
           // 优先从云端同步数据（确保多端数据一致）
           let syncSuccess = false;
           try {
-            console.log('登录时从云端同步数据...');
+jiajia            console.log('登录时从云端同步数据...');
             // 同步数据，考虑时间差
             syncSuccess = await this.syncFromCloud();
             if (syncSuccess) {
@@ -960,11 +960,23 @@
             alert('您的账号已在新设备登录，其他设备已下线');
           }
           
+          console.log('登录成功:', username);
           return true;
         }
         
         // 记录失败的登录尝试
         recordLoginAttempt(username, false);
+        console.log('登录失败：用户名或密码错误:', username);
+        
+        // 确保登录失败后清理所有用户状态
+        this.currentUserId = null;
+        this.currentUsername = null;
+        try {
+          localStorage.removeItem(CURRENT_USER_KEY);
+        } catch (e) {
+          console.warn('清理登录状态失败（已忽略）:', e);
+        }
+        
         return false;
       } catch (e) {
         console.error('登录失败:', e);

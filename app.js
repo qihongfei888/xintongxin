@@ -165,41 +165,15 @@
       }
     }
 
-    // 同步数据到云端
+    // 同步数据到云端（旧实时同步类，内部仍委托到应用的 Supabase 同步）
     async syncToCloud(data) {
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法同步到云端');
-        return false;
-      }
-      
       try {
-        // 尝试将数据转换为JSON字符串，解决参数类型错误
-        const dataToSync = JSON.stringify(data);
-        
-        // 确保userId是字符串类型
-        const userIdStr = String(this.userId || 'default_user');
-        const queryUserId = userIdStr.toString();
-        
-        const query = Bmob.Query('UserData');
-        // 使用最简单的查询格式
-        query.equalTo('userId', queryUserId);
-        const results = await query.find();
-        
-        if (results.length > 0) {
-          const userData = results[0];
-          userData.set('userId', queryUserId);
-          userData.set('data', dataToSync);
-          await userData.save();
-        } else {
-          const userData = Bmob.Query('UserData');
-          userData.set('userId', queryUserId);
-          userData.set('data', dataToSync);
-          await userData.save();
+        if (window.app && typeof window.app.syncToCloud === 'function') {
+          await window.app.syncToCloud(data);
+          return true;
         }
-        
-        console.log('数据已同步到云端');
-        return true;
+        console.log('未找到 app.syncToCloud，跳过旧同步逻辑');
+        return false;
       } catch (e) {
         console.error('同步到云端失败:', e);
         return false;
@@ -1818,12 +1792,6 @@
         return false;
       }
       
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法同步用户列表到云端');
-        return false;
-      }
-      
       try {
         const users = getUserList();
         const now = new Date().toISOString();
@@ -1856,12 +1824,6 @@
       if (!navigator.onLine) {
         console.log('无网络连接，跳过批量上传');
         return { success: false, message: '无网络连接' };
-      }
-      
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法批量上传用户数据到云端');
-        return { success: false, message: 'Bmob SDK未加载' };
       }
       
       try {
@@ -1949,12 +1911,6 @@
       if (!navigator.onLine) {
         console.log('无网络连接，跳过批量下载');
         return { success: false, message: '无网络连接' };
-      }
-      
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法从云端下载用户数据');
-        return { success: false, message: 'Bmob SDK未加载' };
       }
       
       try {
@@ -2052,11 +2008,6 @@
         return false;
       }
       
-      if (typeof Bmob === 'undefined') {
-        console.log('Bmob SDK未加载，跳过备份');
-        return false;
-      }
-      
       try {
         const userData = getUserData();
         const now = new Date().toISOString();
@@ -2083,11 +2034,6 @@
     // 清理旧备份
     async cleanupOldBackups() {
       if (!navigator.onLine || !this.currentUserId) {
-        return false;
-      }
-      
-      if (typeof Bmob === 'undefined') {
-        console.log('Bmob SDK未加载，跳过清理旧备份');
         return false;
       }
       
@@ -2118,12 +2064,6 @@
     async restoreFromBackup(backupId) {
       if (!navigator.onLine || !this.currentUserId) {
         console.log('无网络连接或无用户ID，跳过恢复');
-        return false;
-      }
-      
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法从备份恢复数据');
         return false;
       }
       
@@ -2213,52 +2153,55 @@
       }
     },
     
-    // 从云端同步用户列表
+    // 从云端同步用户列表（使用 Supabase users 表中的虚拟用户 user_list_global）
     async syncUserListFromCloud() {
-      // 检查Bmob是否加载
-      if (typeof Bmob === 'undefined') {
-        console.error('Bmob SDK未加载，无法从云端同步用户列表');
+      if (!navigator.onLine) {
+        console.log('无网络连接，跳过从云端同步用户列表');
         return false;
       }
-      
+      const client = ensureSupabaseClient();
+      if (!client) return false;
+
       try {
-        // 从云端获取用户列表数据
-        const query = Bmob.Query('UserData');
-        query.equalTo('userId', 'user_list_global');
-        const results = await query.find();
-        
-        if (results.length === 0) {
+        const { data, error } = await client
+          .from('users')
+          .select('id, data, updated_at')
+          .eq('id', 'user_list_global')
+          .limit(1);
+
+        if (error) {
+          console.error('从云端同步用户列表失败:', error);
+          return false;
+        }
+
+        if (!data || data.length === 0) {
           console.log('云端没有用户列表数据，尝试上传本地用户列表');
-          // 云端没有数据时，上传本地用户列表
           await this.syncUserListToCloud();
           return true;
         }
-        
-        const cloudData = results[0].get('data');
-        if (cloudData && cloudData.users) {
-          const cloudUsers = cloudData.users;
+
+        const cloudPayload = data[0].data || {};
+        if (cloudPayload && cloudPayload.users) {
+          const cloudUsers = cloudPayload.users;
           const localUsers = getUserList();
-          
-          // 合并用户列表（以云端为准，但保留本地的新用户）
+
           const mergedUsers = [...cloudUsers];
           localUsers.forEach(localUser => {
             if (!mergedUsers.some(u => u.id === localUser.id)) {
               mergedUsers.push(localUser);
             }
           });
-          
+
           setUserList(mergedUsers);
           console.log('用户列表已从云端同步，用户数:', mergedUsers.length);
           return true;
         } else {
           console.log('云端用户列表数据为空，上传本地用户列表');
-          // 云端数据为空时，上传本地用户列表
           await this.syncUserListToCloud();
           return true;
         }
       } catch (e) {
         console.error('从云端同步用户列表失败:', e);
-        // 即使同步失败，也要确保本地有用户列表
         return false;
       }
     },
@@ -2521,7 +2464,7 @@
           }
         }
         if (!uploadOk) {
-          console.log('Bmob SDK未加载或上传失败，数据已保存在本地');
+          console.log('云端上传失败或未配置，数据已保存在本地');
         }
         
         // 无论是否上传成功，都更新本地并重载，确保刷新不丢数据
@@ -2967,7 +2910,7 @@
             // Bmob同步失败不影响本地存储，应用仍可正常使用
           }
         } else {
-          console.log('Bmob SDK未加载，使用本地数据');
+          console.log('云端未配置或拉取失败，使用本地数据');
           // 尝试从本地存储读取数据
           try {
             const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';

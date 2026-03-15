@@ -8,19 +8,32 @@
 
   // Supabase 客户端（用于云端同步）
   let supabaseClient = null;
-  if (typeof window !== 'undefined' &&
-      window.supabase &&
-      window.SUPABASE_URL &&
-      window.SUPABASE_KEY &&
-      typeof window.supabase.createClient === 'function') {
-    try {
-      supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY);
-      console.log('✅ Supabase 客户端已初始化');
-    } catch (e) {
-      console.error('❌ Supabase 客户端初始化失败:', e);
+  if (typeof window !== 'undefined') {
+    console.log('检查 Supabase 配置...');
+    console.log('window.supabase:', typeof window.supabase);
+    console.log('window.SUPABASE_URL:', window.SUPABASE_URL);
+    console.log('window.SUPABASE_KEY:', window.SUPABASE_KEY ? '已配置' : '未配置');
+    
+    if (window.supabase &&
+        window.SUPABASE_URL &&
+        window.SUPABASE_KEY &&
+        typeof window.supabase.createClient === 'function') {
+      try {
+        supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY);
+        console.log('✅ Supabase 客户端已初始化');
+      } catch (e) {
+        console.error('❌ Supabase 客户端初始化失败:', e);
+      }
+    } else {
+      console.warn('⚠️ Supabase 未完整配置（缺少 URL/KEY 或 SDK），当前仅使用本地/IndexedDB 存储');
+      console.log('详细信息:');
+      console.log('- window.supabase:', window.supabase ? '存在' : '不存在');
+      console.log('- window.SUPABASE_URL:', window.SUPABASE_URL ? '已配置' : '未配置');
+      console.log('- window.SUPABASE_KEY:', window.SUPABASE_KEY ? '已配置' : '未配置');
+      console.log('- createClient 方法:', window.supabase && typeof window.supabase.createClient === 'function' ? '存在' : '不存在');
     }
   } else {
-    console.warn('⚠️ Supabase 未完整配置（缺少 URL/KEY 或 SDK），当前仅使用本地/IndexedDB 存储');
+    console.warn('⚠️ 非浏览器环境，Supabase 未初始化');
   }
   
   // 检查存储空间
@@ -403,9 +416,22 @@
   function getUserList() {
     try {
       const v = localStorage.getItem(USER_LIST_KEY);
-      return v ? JSON.parse(v) : [];
+      const localUsers = v ? JSON.parse(v) : [];
+      
+      // 如果本地用户列表为空，尝试从内存存储获取
+      if (localUsers.length === 0) {
+        console.log('本地用户列表为空，尝试从内存存储获取...');
+        const memoryUsers = memoryStorage[USER_LIST_KEY] || [];
+        if (memoryUsers.length > 0) {
+          console.log('从内存存储获取到用户列表，数量:', memoryUsers.length);
+          return memoryUsers;
+        }
+      }
+      
+      return localUsers;
     } catch (e) {
       // localStorage 不可用时使用内存存储
+      console.error('获取用户列表失败，使用内存存储:', e);
       return memoryStorage[USER_LIST_KEY] || [];
     }
   }
@@ -8367,6 +8393,21 @@
         console.log('重新加载后本地用户列表:', localUsers);
         userExistsLocally = localUsers.some(u => u.username === username);
         console.log('重新加载后用户是否存在:', userExistsLocally);
+      }
+      
+      // 再次尝试同步：如果本地仍然没有用户，再次尝试从云端同步
+      if (localUsers.length === 0 && navigator.onLine) {
+        console.log('本地用户列表仍然为空，再次尝试从云端同步...');
+        try {
+          const syncSuccess = await app.syncUserListFromCloud();
+          console.log('第二次同步结果:', syncSuccess);
+          localUsers = getUserList();
+          console.log('第二次同步后本地用户列表:', localUsers);
+          userExistsLocally = localUsers.some(u => u.username === username);
+          console.log('第二次同步后用户是否存在:', userExistsLocally);
+        } catch (e) {
+          console.error('第二次同步用户列表失败:', e);
+        }
       }
       
       // 进行登录

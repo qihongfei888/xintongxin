@@ -88,10 +88,24 @@
       return false;
     }
     try {
+      // 检查 userId 是否为空
+      if (!userId) {
+        console.error('Supabase 账号写入失败: userId 为空');
+        return false;
+      }
+      
+      const uid = String(userId).trim();
+      // 再次检查 trim 后是否为空
+      if (!uid) {
+        console.error('Supabase 账号写入失败: userId 为空');
+        return false;
+      }
+      
       const payload = {
+        id: uid,
         username: String(username).trim(),
         password: String(password),
-        user_id: String(userId)
+        user_id: uid
       };
       const { error } = await supabaseClient
         .from('accounts')

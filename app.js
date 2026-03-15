@@ -133,13 +133,18 @@
     }
     const uname = String(username).trim();
     const pwd = String(password);
+    console.log('尝试从 Supabase 获取账号:', uname);
     try {
       // 先只按用户名查，避免 Supabase 对 password 类型/格式导致查不到
+      console.log('执行 Supabase 查询...');
       const { data, error } = await supabaseClient
         .from('accounts')
         .select('username,password,user_id')
         .eq('username', uname)
         .limit(1);
+      
+      console.log('Supabase 查询结果:', { data, error });
+      
       if (error) {
         console.error('Supabase 查询账号失败(请确认已创建 accounts 表):', error);
         return null;
@@ -149,11 +154,15 @@
         return null;
       }
       const row = data[0];
+      console.log('Supabase 找到账号:', row);
       const storedPwd = row.password != null ? String(row.password) : '';
       if (storedPwd !== pwd) {
         console.warn('Supabase 账号密码不匹配(请确认与电脑端输入完全一致)');
+        console.log('存储的密码:', storedPwd);
+        console.log('输入的密码:', pwd);
         return null;
       }
+      console.log('账号验证成功，返回账号信息');
       return row;
     } catch (e) {
       console.error('Supabase 查询账号异常:', e);
@@ -1068,8 +1077,10 @@
 
         // 本地不存在时，尝试从 Supabase accounts 表拉取账号信息
         if (!user) {
+          console.log('本地未找到用户，尝试从 Supabase 获取...');
           const account = await fetchAccountFromSupabase(username, password);
           if (account && account.user_id) {
+            console.log('从 Supabase 获取到账号信息:', account);
             user = users.find(u => u.id === account.user_id || u.username === username);
             if (!user) {
               user = {
@@ -1083,9 +1094,11 @@
                 licenseKey: ''
               };
               users.push(user);
+              console.log('创建新用户对象:', user);
             } else if (!user.password) {
               // 旧数据里密码为空时，用当前密码补全
               user.password = password;
+              console.log('更新用户密码');
             }
             try {
               setUserList(users);

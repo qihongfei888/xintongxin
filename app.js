@@ -6548,17 +6548,37 @@
       const userData = {};
       userList.forEach(function (user) {
         try {
-          let raw = null;
-          // 尝试从localStorage读取
-          try {
-            raw = localStorage.getItem(USER_DATA_PREFIX + user.id);
-          } catch (e) {
-            // localStorage不可用时，从内存存储读取
-            raw = memoryStorage[USER_DATA_PREFIX + user.id];
+          // 优先使用getUserDataForUser函数获取用户数据，确保数据一致性
+          const userDataFromFunction = getUserDataForUser(user.id);
+          if (Object.keys(userDataFromFunction).length > 0) {
+            userData[user.id] = userDataFromFunction;
+          } else {
+            // 如果getUserDataForUser返回空对象，尝试直接从存储读取
+            let raw = null;
+            // 尝试从localStorage读取
+            try {
+              raw = localStorage.getItem(USER_DATA_PREFIX + user.id);
+            } catch (e) {
+              // localStorage不可用时，从内存存储读取
+              raw = memoryStorage[USER_DATA_PREFIX + user.id];
+            }
+            if (raw) {
+              try {
+                userData[user.id] = JSON.parse(raw);
+              } catch (e) {
+                console.error('解析用户数据失败:', e);
+              }
+            }
           }
-          if (raw) userData[user.id] = JSON.parse(raw);
-        } catch (e) {}
+        } catch (e) {
+          console.error('获取用户数据失败:', e);
+        }
       });
+      
+      // 验证导出数据的完整性
+      console.log('导出用户列表长度:', userList.length);
+      console.log('导出用户数据数量:', Object.keys(userData).length);
+      
       const backup = {
         version: 1,
         exportTime: Date.now(),
@@ -8032,33 +8052,74 @@
       alert('备份文件格式不正确');
       return;
     }
+    
+    console.log('开始导入备份，用户数据数量:', Object.keys(backup.userData || {}).length);
+    console.log('用户列表长度:', (backup.userList || []).length);
+    
     try {
+      // 清除现有的用户数据
       localStorage.removeItem(USER_LIST_KEY);
       localStorage.removeItem(CURRENT_USER_KEY);
+      
       // 清除所有用户数据
       const users = getUserList();
       users.forEach(function (user) {
-        try { localStorage.removeItem(USER_DATA_PREFIX + user.id); } catch (e) {}
+        try { 
+          localStorage.removeItem(USER_DATA_PREFIX + user.id);
+          // 同时清除内存存储中的数据
+          delete memoryStorage[USER_DATA_PREFIX + user.id];
+        } catch (e) {}
       });
-    } catch (e) {}
+    } catch (e) {
+      console.error('清除现有数据失败:', e);
+    }
+    
     // 导入用户列表
     if (backup.userList) {
+      console.log('导入用户列表，数量:', backup.userList.length);
       setUserList(backup.userList);
     }
+    
     // 导入用户数据
-    Object.keys(backup.userData || {}).forEach(function (userId) {
+    const userDataKeys = Object.keys(backup.userData || {});
+    console.log('导入用户数据，用户数量:', userDataKeys.length);
+    
+    userDataKeys.forEach(function (userId) {
       try {
-        localStorage.setItem(USER_DATA_PREFIX + userId, JSON.stringify(backup.userData[userId]));
-      } catch (e) {}
+        const userData = backup.userData[userId];
+        console.log('导入用户ID:', userId, '数据大小:', JSON.stringify(userData).length);
+        
+        // 同时保存到localStorage和内存存储
+        localStorage.setItem(USER_DATA_PREFIX + userId, JSON.stringify(userData));
+        memoryStorage[USER_DATA_PREFIX + userId] = userData;
+        
+        // 如果使用IndexedDB，也保存到IndexedDB
+        if (useIndexedDB && indexedDBReady) {
+          const key = USER_DATA_PREFIX + userId;
+          IndexedDBManager.setItem(key, userData).catch(function(e) {
+            console.error('IndexedDB 写入失败:', e);
+          });
+        }
+      } catch (e) {
+        console.error('导入用户数据失败:', e);
+      }
     });
+    
     // 设置当前用户
     if (backup.currentUserId) {
+      console.log('设置当前用户ID:', backup.currentUserId);
       const users = getUserList();
       const user = users.find(u => u.id === backup.currentUserId);
       if (user) {
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ id: user.id, username: user.username }));
+        const currentUserObj = { id: user.id, username: user.username };
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(currentUserObj));
+        memoryStorage[CURRENT_USER_KEY] = JSON.stringify(currentUserObj);
+        console.log('当前用户设置成功:', user.username);
+      } else {
+        console.error('未找到当前用户:', backup.currentUserId);
       }
     }
+    
     alert('导入成功，页面即将刷新');
     location.reload();
   }

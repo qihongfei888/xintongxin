@@ -9170,7 +9170,6 @@
       if (!username) { alert('请输入用户名（手机号或邮箱）'); return; }
       if (!password) { alert('请输入密码'); return; }
       
-      alert('登录事件触发，用户名: ' + username);
       console.log('登录尝试:', username);
       
       // 检查是否为管理员账号
@@ -9288,12 +9287,12 @@
           alert('密码错误，请重新输入');
           return;
         }
-        // 本地无此用户：区分「云端无此用户名」与「云端有用户但密码不对」
+        // 本地无此用户：区分「云端无此用户名」与「云端有用户但密码不对」（手机端无控制台时也靠此处提示）
         const existsInCloud = await checkAccountExistsInSupabase(username);
         if (existsInCloud) {
-          alert('密码错误。\n\n请确认与电脑端注册时输入的密码完全一致（区分大小写、无多余空格）。');
+          alert('密码错误。\n\n请与电脑端使用的密码完全一致（区分大小写、无空格）。\n若仍无法登录，请先在电脑上退出后重新登录一次，再回本机重试。');
         } else {
-          alert('用户名不存在或尚未同步到云端。\n\n请确认：\n1) 已在电脑端用此用户名注册；\n2) 本机网络正常；\n3) 管理员已在 Supabase 创建 accounts 表。');
+          alert('该账号尚未同步到本机。\n\n请先到电脑上使用此账号登录一次（登录成功即可），再回到本机用同一账号密码登录。\n并确认本机网络正常。');
         }
       }
     });

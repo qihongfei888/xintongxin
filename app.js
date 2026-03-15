@@ -2681,7 +2681,7 @@
         if (userIdStr) {
           const { data, error } = await client
             .from('users')
-            .select('id, data, updated_at, licenses')
+            .select('id, data, updated_at')
             .eq('id', userIdStr)
             .limit(1);
           if (error) {
@@ -2693,14 +2693,14 @@
           return [{
             objectId: row.id,
             data: row.data,
-            licenses: row.licenses,
+            licenses: null,
             sessionId: null,
             updatedAt: row.updated_at
           }];
         } else {
           const { data, error } = await client
             .from('users')
-            .select('id, data, updated_at, licenses')
+            .select('id, data, updated_at')
             .order('updated_at', { ascending: false })
             .limit(100);
           if (error) {
@@ -2710,7 +2710,7 @@
           return (data || []).map(row => ({
             objectId: row.id,
             data: row.data,
-            licenses: row.licenses,
+            licenses: null,
             sessionId: null,
             updatedAt: row.updated_at
           }));

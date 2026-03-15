@@ -1185,7 +1185,9 @@
           this.currentUsername = user.username;
           
           // 登录成功后将账号写入 Supabase accounts，便于其他设备用同一账号登录
+          console.log('准备调用 upsertAccountToSupabase:', { userUsername: user.username, userPassword: password, userId: user.id });
           if (navigator.onLine && supabaseClient) {
+            console.log('网络在线，Supabase 客户端可用，开始同步账号');
             try {
               const ok = await upsertAccountToSupabase(user.username, password, user.id);
               if (ok) {
@@ -1196,6 +1198,8 @@
             } catch (e) {
               console.warn('登录时同步账号到 Supabase 失败:', e);
             }
+          } else {
+            console.log('网络离线或 Supabase 客户端不可用，跳过账号同步');
           }
           
           // 保存当前用户信息

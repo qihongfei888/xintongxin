@@ -1936,6 +1936,10 @@
         console.log('无网络连接，跳过批量下载');
         return { success: false, message: '无网络连接' };
       }
+      if (typeof Bmob === 'undefined') {
+        console.log('当前未配置 Bmob，跳过批量下载所有用户数据（已改用 Supabase 同步）');
+        return { success: false, message: '当前版本未启用旧 Bmob 云端，不支持批量下载所有用户数据' };
+      }
       
       try {
         console.log('开始从云端下载所有用户数据...');
@@ -2729,16 +2733,34 @@
       }
       
       this.syncing = true;
-      if (!skipSessionCheck && statusEl) statusEl.textContent = '云同步状态：正在从 Supabase 拉取数据…';
+      if (!skipSessionCheck && statusEl) statusEl.textContent = '云同步状态：正在向 Supabase 发起请求…';
       if (!skipSessionCheck && btnUpload) btnUpload.disabled = true;
       if (!skipSessionCheck && btnDownload) btnDownload.disabled = true;
       let syncSuccess = false;
       const userIdStr = this.currentUserId ? String(this.currentUserId).trim() : '';
       console.log('开始从Bmob同步数据，用户ID:', userIdStr || '(无)');
-      
+
+      // 前端体验优化：设置超时与阶段提示
+      const TIMEOUT_MS = 60000; // 60 秒超时
+      let timedOut = false;
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        console.warn('从云端拉取数据超时，可能是网络较慢');
+        if (!skipSessionCheck && statusEl) {
+          statusEl.textContent = '云同步状态：网络较慢或 Supabase 响应超时，请稍后重试。';
+        }
+        if (!skipSessionCheck && btnUpload) btnUpload.disabled = false;
+        if (!skipSessionCheck && btnDownload) btnDownload.disabled = false;
+      }, TIMEOUT_MS);
+
       try {
         // 1) 优先用 REST API 拉取，避免 SDK 在部分环境触发 415
+        if (!skipSessionCheck && statusEl) statusEl.textContent = '云同步状态：已发送请求，等待 Supabase 响应…';
         let results = await this.fetchUserDataViaRest(userIdStr);
+        if (timedOut) {
+          // 已经超时，直接放弃后续处理，交给用户稍后重试
+          return false;
+        }
         if (results && results.length > 0) {
           if (userIdStr && results.length > 1) {
             results = results.slice(0, 1);
@@ -2760,10 +2782,12 @@
           const cloudLicenses = row.licenses;
           const cloudTimestamp = String(row.updatedAt || '1970-01-01T00:00:00.000Z');
           if (cloudData) {
+            if (!skipSessionCheck && statusEl) statusEl.textContent = '云同步状态：已从 Supabase 收到数据，正在解析…';
             if (typeof cloudData === 'string') {
               try { cloudData = JSON.parse(cloudData); } catch (e) {}
             }
             if (cloudData && typeof cloudData === 'object') {
+              if (!skipSessionCheck && statusEl) statusEl.textContent = '云同步状态：正在迁移并校验数据…';
               let updatedData = this.migrateUserData(cloudData);
               if (this.validateUserData(updatedData)) {
                 updatedData.lastModified = cloudTimestamp;
@@ -2775,6 +2799,7 @@
                 }
                 const localData = getUserData();
                 if (this.shouldOverwriteLocalWithCloud(localData, updatedData)) {
+                  if (!skipSessionCheck && statusEl) statusEl.textContent = '云同步状态：正在写入本地存储…';
                   setUserData(updatedData);
                   syncSuccess = true;
                   console.log('从Bmob REST同步成功，数据已更新');

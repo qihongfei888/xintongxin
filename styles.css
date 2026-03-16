@@ -2050,6 +2050,171 @@ body::before {
   background: rgba(255,107,107,0.12);
 }
 
+/* 添加学生：同一行输入 */
+.form-row{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* 排座位 */
+.seat-toolbar{ display:flex; flex-direction:column; gap:10px; margin: 10px 0 14px; }
+.seat-toolbar-row{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.seat-small{ width: 90px; }
+.seat-tip{ color: var(--text-muted); font-size: 0.9rem; }
+.seat-stage{ width: 100%; overflow:auto; padding: 10px; background: var(--bg); border-radius: 14px; border: 2px solid var(--border); }
+.seat-board{
+  display: grid;
+  gap: 10px;
+  justify-content: start;
+}
+.seat-cell{
+  width: 110px;
+  min-height: 64px;
+  padding: 10px 10px;
+  border-radius: 14px;
+  background: #fff;
+  border: 2px dashed rgba(255,107,107,0.35);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.06);
+  cursor: pointer;
+  position: relative;
+}
+.seat-cell.locked{
+  border-style: solid;
+  border-color: rgba(34, 197, 94, 0.45);
+}
+.seat-cell .seat-name{ font-weight: 700; }
+.seat-cell .seat-meta{ font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
+.seat-cell .seat-lock{
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 0.95rem;
+  opacity: 0.8;
+}
+
+.student-extra-info{
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 小工具面板 */
+.tool-grid{
+  margin-top: 26px;
+  padding: 18px 20px 14px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(255,245,245,0.96));
+  box-shadow: 0 16px 40px rgba(255,107,107,0.08);
+  border: 1px solid rgba(255,255,255,0.9);
+}
+.tool-grid-title{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size: 1.02rem;
+  margin-bottom: 12px;
+  color: var(--text);
+  font-weight: 600;
+}
+.tool-grid-list{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.tool-card{
+  border: none;
+  background: #fff;
+  border-radius: 16px;
+  padding: 12px 16px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:4px;
+  cursor:pointer;
+  text-align:left;
+  box-shadow: 0 10px 26px rgba(0,0,0,0.04);
+  transition: all 0.15s ease;
+  position: relative;
+  overflow: hidden;
+}
+.tool-card:hover{
+  transform: translateY(-3px);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.08);
+}
+.tool-card-icon{
+  font-size: 1.7rem;
+  margin-bottom: 6px;
+}
+.tool-card-main{
+  font-weight: 600;
+  font-size: 1.02rem;
+}
+.tool-card-sub{
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* 期末评语 */
+.term-layout{
+  display:grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap:18px;
+  margin-top: 8px;
+}
+.term-left{ display:flex; flex-direction:column; gap:12px; }
+.term-right{ display:flex; flex-direction:column; gap:8px; }
+.term-teacher-settings{
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+.term-teacher-settings h4{
+  margin-bottom: 8px;
+}
+.term-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.term-card{
+  margin-top: 4px;
+  padding: 18px 18px 14px;
+  border-radius: 16px;
+  background: linear-gradient(180deg,#fff,#fff7f7);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.05);
+  font-family: 'Ma Shan Zheng','ZCOOL KuaiLe', 'Microsoft YaHei',sans-serif;
+}
+.term-card-header{
+  text-align:center;
+  margin-bottom: 8px;
+}
+.term-card-title{ font-size: 1.3rem; font-weight: 700; color: var(--primary-dark); }
+.term-card-term{ font-size: 0.9rem; color: var(--text-muted); }
+.term-card-body{
+  padding: 10px 6px 12px;
+  min-height: 120px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.8);
+  line-height: 1.8;
+  font-size: 0.98rem;
+}
+.term-card-footer{
+  display:flex;
+  justify-content:space-between;
+  margin-top: 10px;
+  font-size: 0.92rem;
+}
+.term-card-actions{
+  display:flex;
+  gap:8px;
+  margin-top: 10px;
+}
+
 /* 批量积分学生列表 */
 .batch-student-item {
   display: flex;

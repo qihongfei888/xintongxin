@@ -324,6 +324,19 @@
     }
   }
 
+  function _parseNum(v) {
+    const n = parseFloat(String(v || '').trim());
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function getCurrentTermLabel() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const term = month >= 8 || month <= 1 ? '第一学期' : '第二学期';
+    return `${year}-${year + 1}学年${term}`;
+  }
+
   // 授权码管理
   const LICENSE_KEY = 'class_pet_licenses';
   const ACTIVATED_DEVICES_KEY = 'class_pet_activated_devices';
@@ -1286,13 +1299,6 @@
         // 加载班级列表
         this.classes = data.classes || [];
         this.currentClassId = data.currentClassId || null;
-
-        // 如果存在班级但未选中当前班级，则自动选中第一个班级，避免“有数据但不显示”
-        if (!this.currentClassId && this.classes.length > 0) {
-          this.currentClassId = this.classes[0].id;
-          data.currentClassId = this.currentClassId;
-          setUserData(data);
-        }
         
         // 加载当前班级数据
         const currentClass = this.classes.find(c => c.id === this.currentClassId);
@@ -1715,7 +1721,9 @@
             prizes: cls.prizes,
             lotteryPrizes: cls.lotteryPrizes,
             broadcastMessages: cls.broadcastMessages,
-            petCategoryPhotos: cls.petCategoryPhotos
+            petCategoryPhotos: cls.petCategoryPhotos,
+            // 排座位：按班级保存
+            seatingPlan: cls.seatingPlan
           };
 
           // 学生列表：只保留与教学密切相关的字段（姓名、学号、积分、宠物状态等）
@@ -1733,7 +1741,14 @@
                 completedPets: stu.completedPets || [],
                 accessories: stu.accessories || [],
                 // 基本展示信息
-                avatar: stu.avatar || null
+                avatar: stu.avatar || null,
+                // 学生信息（用于排座位等小工具）
+                height: stu.height || null,
+                visionLeft: stu.visionLeft || null,
+                visionRight: stu.visionRight || null,
+                parentPhone: stu.parentPhone || null,
+                familyNote: stu.familyNote || null,
+                termComment: stu.termComment || null
               };
 
               // 最近的加减分记录保留少量，方便撤回/查看（最多 50 条）
@@ -3806,6 +3821,14 @@
       const accessoriesHtml = petAccessories.length > 0 ? 
         `<div class="pet-accessories">${petAccessories.map(acc => `<span class="accessory" title="${acc.name}">${acc.icon}</span>`).join('')}</div>` : 
         '';
+
+      // 学生信息（可选）：身高 / 视力 / 家长电话 / 家庭备注（仅有值时显示）
+      const infoParts = [];
+      if (s.height) infoParts.push(`身高:${this.escape(String(s.height))}cm`);
+      if (s.visionLeft || s.visionRight) infoParts.push(`视力:${this.escape(String(s.visionLeft || '-'))}/${this.escape(String(s.visionRight || '-'))}`);
+      if (s.parentPhone) infoParts.push(`家长:${this.escape(String(s.parentPhone))}`);
+      if (s.familyNote) infoParts.push(`备注:${this.escape(String(s.familyNote))}`);
+      const extraInfoHtml = infoParts.length ? `<div class="student-extra-info" title="${infoParts.join('｜')}">${infoParts.slice(0,2).join(' ｜ ')}${infoParts.length>2?'…':''}</div>` : '';
       
       // 判断是否可以喂食
       const canFeed = s.pet && (s.points || 0) >= 1 && (s.pet.stage || 0) < totalStages;
@@ -3830,6 +3853,7 @@
               <span class="student-name-v2" style="color: ${theme.primary};">${this.escape(s.name)}</span>
               ${s.pet ? `<span class="student-pet-type">${s.pet.isCustom ? s.pet.customName : (s.pet.typeId ? '宠物' : '未领养')}</span>` : '<span class="student-pet-type">未领养</span>'}
             </div>
+            ${extraInfoHtml}
             <div class="student-progress-row">
               <span class="progress-label">${needPointsText}</span>
               <span class="progress-status">${progressText}</span>
@@ -5935,6 +5959,411 @@
       const menu = document.getElementById('toolsMenu');
       if (menu) menu.style.display = 'none';
     },
+    openTermCommentTool() {
+      const modal = document.getElementById('termCommentModal');
+      if (!modal) return;
+      // 填充学生下拉
+      const select = document.getElementById('termCommentStudentSelect');
+      if (select) {
+        const options = ['<option value=\"\">-- 请选择学生 --</option>'].concat(
+          this.students.map(s => `<option value=\"${this.escape(String(s.id))}\">${this.escape(String(s.id || ''))} - ${this.escape(String(s.name || ''))}</option>`)
+        );
+        select.innerHTML = options.join('');
+      }
+      // 默认标题 & 当前学期
+      const titleEl = document.getElementById('termCommentTitle');
+      if (titleEl && !titleEl.value) titleEl.value = '期末评语';
+      this.renderTermCommentCard();
+      modal.classList.add('show');
+    },
+    closeTermCommentTool() {
+      const modal = document.getElementById('termCommentModal');
+      if (modal) modal.classList.remove('show');
+    },
+
+    openSeatArrangeTool() {
+      const modal = document.getElementById('seatArrangeModal');
+      if (!modal) { alert('排座位模块未加载'); return; }
+
+      // 读取已保存的班级座位方案
+      const data = getUserData();
+      const cls = data.classes && this.currentClassId ? data.classes.find(c => c.id === this.currentClassId) : null;
+      const plan = cls && cls.seatingPlan ? cls.seatingPlan : null;
+
+      const colsEl = document.getElementById('seatCols');
+      const rowsEl = document.getElementById('seatRows');
+      if (colsEl) colsEl.value = String((plan && plan.cols) || 8);
+      if (rowsEl) rowsEl.value = String((plan && plan.rows) || 6);
+
+      modal.classList.add('show');
+      this._renderSeatBoard(plan);
+    },
+    closeSeatArrangeModal() {
+      const modal = document.getElementById('seatArrangeModal');
+      if (modal) modal.classList.remove('show');
+    },
+    _getSeatRules() {
+      const lowVisionFront = !!(document.getElementById('seatRuleLowVisionFront') && document.getElementById('seatRuleLowVisionFront').checked);
+      const visionThreshold = _parseNum(document.getElementById('seatVisionThreshold') && document.getElementById('seatVisionThreshold').value) ?? 4.8;
+      const frontRows = parseInt((document.getElementById('seatFrontRows') && document.getElementById('seatFrontRows').value) || '2', 10) || 0;
+      return { lowVisionFront, visionThreshold, frontRows };
+    },
+    _renderSeatBoard(plan) {
+      const board = document.getElementById('seatBoard');
+      if (!board) return;
+      const cols = parseInt((document.getElementById('seatCols') && document.getElementById('seatCols').value) || '8', 10) || 8;
+      const rows = parseInt((document.getElementById('seatRows') && document.getElementById('seatRows').value) || '6', 10) || 6;
+      board.style.gridTemplateColumns = `repeat(${cols}, 110px)`;
+
+      const seats = (plan && Array.isArray(plan.seats)) ? plan.seats : [];
+      const getSeat = (r, c) => seats.find(x => x.r === r && x.c === c) || { r, c, studentId: null, locked: false };
+      const byId = new Map(this.students.map(s => [String(s.id), s]));
+
+      board.innerHTML = '';
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const seat = getSeat(r, c);
+          const stu = seat.studentId ? byId.get(String(seat.studentId)) : null;
+          const cell = document.createElement('div');
+          cell.className = 'seat-cell' + (seat.locked ? ' locked' : '');
+          cell.dataset.r = String(r);
+          cell.dataset.c = String(c);
+          cell.innerHTML = `
+            <div class="seat-lock">${seat.locked ? '🔒' : ''}</div>
+            <div class="seat-name">${stu ? this.escape(stu.name) : '空'}</div>
+            <div class="seat-meta">${stu ? this.escape(String(stu.id || '')) : `第${r + 1}行-${c + 1}列`}</div>
+          `;
+          // 点击座位主体：弹出学生选择器
+          cell.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.openSeatStudentPicker(r, c);
+          });
+          // 点击锁图标：仅切换锁定状态
+          const lockEl = cell.querySelector('.seat-lock');
+          if (lockEl) {
+            lockEl.addEventListener('click', (e) => {
+              e.stopPropagation();
+              this.toggleSeatLock(r, c);
+            });
+          }
+          board.appendChild(cell);
+        }
+      }
+    },
+    toggleSeatLock(r, c) {
+      const data = getUserData();
+      const cls = data.classes && this.currentClassId ? data.classes.find(x => x.id === this.currentClassId) : null;
+      if (!cls) return;
+      if (!cls.seatingPlan) cls.seatingPlan = { rows: 6, cols: 8, seats: [] };
+
+      const plan = cls.seatingPlan;
+      const seat = plan.seats.find(x => x.r === r && x.c === c);
+      if (seat) {
+        seat.locked = !seat.locked;
+      } else {
+        plan.seats.push({ r, c, studentId: null, locked: true });
+      }
+      setUserData(data);
+      this.loadUserData();
+      this._renderSeatBoard(plan);
+    },
+    openSeatStudentPicker(r, c) {
+      const modal = document.getElementById('seatStudentPickerModal');
+      const rowInput = document.getElementById('seatPickerRow');
+      const colInput = document.getElementById('seatPickerCol');
+      const select = document.getElementById('seatStudentSelect');
+      const lockBox = document.getElementById('seatPickerLock');
+      if (!modal || !rowInput || !colInput || !select) return;
+
+      rowInput.value = String(r);
+      colInput.value = String(c);
+
+      const data = getUserData();
+      const cls = data.classes && this.currentClassId ? data.classes.find(x => x.id === this.currentClassId) : null;
+      const seats = cls && cls.seatingPlan && Array.isArray(cls.seatingPlan.seats) ? cls.seatingPlan.seats : [];
+      const seat = seats.find(x => x.r === r && x.c === c) || { studentId: null, locked: false };
+
+      // 当前已占用学生
+      const currentId = seat.studentId ? String(seat.studentId) : '';
+
+      // 构造下拉列表：先“空座”，然后全部学生
+      const options = ['<option value="">（空座）</option>'].concat(
+        this.students.map(s => `<option value="${this.escape(String(s.id))}">${this.escape(String(s.id || ''))} - ${this.escape(String(s.name || ''))}</option>`)
+      );
+      select.innerHTML = options.join('');
+      if (currentId) select.value = currentId;
+
+      if (lockBox) lockBox.checked = !!seat.locked;
+
+      modal.classList.add('show');
+    },
+    closeSeatStudentPicker() {
+      const modal = document.getElementById('seatStudentPickerModal');
+      if (modal) modal.classList.remove('show');
+    },
+    assignStudentToSeat() {
+      const rowInput = document.getElementById('seatPickerRow');
+      const colInput = document.getElementById('seatPickerCol');
+      const select = document.getElementById('seatStudentSelect');
+      const lockBox = document.getElementById('seatPickerLock');
+      if (!rowInput || !colInput || !select) return;
+
+      const r = parseInt(rowInput.value, 10) || 0;
+      const c = parseInt(colInput.value, 10) || 0;
+      const studentId = select.value || null;
+      const lock = !!(lockBox && lockBox.checked);
+
+      const data = getUserData();
+      const cls = data.classes && this.currentClassId ? data.classes.find(x => x.id === this.currentClassId) : null;
+      if (!cls) return;
+      if (!cls.seatingPlan) cls.seatingPlan = { rows: 6, cols: 8, seats: [] };
+      const plan = cls.seatingPlan;
+
+      // 确保单个学生只在一个座位上：先清除该学生在其他座位
+      if (studentId) {
+        plan.seats.forEach(s => {
+          if (String(s.studentId) === String(studentId) && (s.r !== r || s.c !== c)) {
+            s.studentId = null;
+          }
+        });
+      }
+
+      let seat = plan.seats.find(x => x.r === r && x.c === c);
+      if (!seat) {
+        seat = { r, c, studentId: null, locked: false };
+        plan.seats.push(seat);
+      }
+      seat.studentId = studentId;
+      seat.locked = lock;
+
+      setUserData(data);
+      this.loadUserData();
+      this._renderSeatBoard(plan);
+      this.closeSeatStudentPicker();
+    },
+    clearSeatStudent() {
+      const rowInput = document.getElementById('seatPickerRow');
+      const colInput = document.getElementById('seatPickerCol');
+      if (!rowInput || !colInput) return;
+      const r = parseInt(rowInput.value, 10) || 0;
+      const c = parseInt(colInput.value, 10) || 0;
+
+      const data = getUserData();
+      const cls = data.classes && this.currentClassId ? data.classes.find(x => x.id === this.currentClassId) : null;
+      if (!cls || !cls.seatingPlan || !Array.isArray(cls.seatingPlan.seats)) { this.closeSeatStudentPicker(); return; }
+      const plan = cls.seatingPlan;
+      const seat = plan.seats.find(x => x.r === r && x.c === c);
+      if (seat) {
+        seat.studentId = null;
+      }
+      setUserData(data);
+      this.loadUserData();
+      this._renderSeatBoard(plan);
+      this.closeSeatStudentPicker();
+    },
+
+    generateTermComment(force) {
+      const select = document.getElementById('termCommentStudentSelect');
+      const contentEl = document.getElementById('termCommentContent');
+      if (!select || !contentEl) return;
+      const studentId = select.value;
+      if (!studentId) { alert('请先选择学生'); return; }
+      const stu = this.students.find(s => String(s.id) === String(studentId));
+      if (!stu) { alert('未找到该学生'); return; }
+
+      const perf = document.getElementById('termPerf').value || '优秀';
+      const study = document.getElementById('termStudy').value || '积极';
+      const cls = document.getElementById('termClass').value || '活跃';
+      const hw = document.getElementById('termHomework').value || '完成良好';
+      const remark = (document.getElementById('termRemark').value || '').trim();
+      const style = document.getElementById('termCommentStyle').value || 'encourage';
+
+      let text = '';
+      const name = stu.name || '该生';
+      if (style === 'encourage') {
+        text = `${name}同学在本学期中平时表现${perf}，学习态度${study}，课堂参与${cls}，作业完成情况${hw}。`;
+        if (remark) {
+          text += remark.endsWith('。') ? remark : (remark + '。');
+        }
+        text += '希望今后继续保持良好的学习习惯，在新的阶段里取得更大的进步。';
+      } else if (style === 'objective') {
+        text = `本学期，${name}同学总体表现${perf}，学习态度${study}。课堂表现${cls}，作业完成${hw}。`;
+        if (remark) text += remark.endsWith('。') ? remark : (remark + '。');
+        text += '期待在保持现有优点的同时，进一步完善自我。';
+      } else {
+        text = `${name}同学本学期在学习与生活中仍有较大提升空间。平时表现${perf}，学习态度${study}，课堂参与${cls}，作业完成${hw}。`;
+        if (remark) text += remark.endsWith('。') ? remark : (remark + '。');
+        text += '希望新学期能够端正学习态度，在家校共同配合下不断进步。';
+      }
+
+      contentEl.value = text;
+
+      // 保存到内存对象（不立即写盘，交给 saveTermComment）
+      stu.termComment = text;
+      this.renderTermCommentCard();
+    },
+    saveTermComment() {
+      const select = document.getElementById('termCommentStudentSelect');
+      const contentEl = document.getElementById('termCommentContent');
+      if (!select || !contentEl) return;
+      const studentId = select.value;
+      if (!studentId) { alert('请先选择学生'); return; }
+      const stu = this.students.find(s => String(s.id) === String(studentId));
+      if (!stu) { alert('未找到该学生'); return; }
+
+      const text = (contentEl.value || '').trim();
+      if (!text) { alert('评语内容为空，无法保存'); return; }
+      stu.termComment = text;
+      this.saveStudents();
+      this.renderTermCommentCard();
+      alert('评语已保存到该学生');
+    },
+    renderTermCommentCard() {
+      const card = document.getElementById('termCommentCard');
+      if (!card) return;
+      const select = document.getElementById('termCommentStudentSelect');
+      const contentEl = document.getElementById('termCommentContent');
+      const titleEl = document.getElementById('termCommentTitle');
+      const title = titleEl ? (titleEl.value || '期末评语') : '期末评语';
+      const termLabel = getCurrentTermLabel();
+      const studentId = select ? select.value : '';
+      const stu = studentId ? this.students.find(s => String(s.id) === String(studentId)) : null;
+      const name = stu ? (stu.name || '') : '学生姓名';
+      const content = contentEl ? (contentEl.value || '点击「生成评语」按钮，系统将根据学生表现自动生成评语…') : '';
+      const teacherName = this.currentUsername || '';
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
+
+      card.innerHTML = `
+        <div class="term-card-header">
+          <div class="term-card-title">${title}</div>
+          <div class="term-card-term">${termLabel}</div>
+        </div>
+        <div class="term-card-body">
+          <p><strong>${name}</strong>：</p>
+          <p>${content.replace(/\\n/g, '<br>')}</p>
+        </div>
+        <div class="term-card-footer">
+          <span>班主任：${teacherName || '__________'}</span>
+          <span>日期：${dateStr}</span>
+        </div>
+      `;
+    },
+    openTermCommentPrint() {
+      const card = document.getElementById('termCommentCard');
+      if (!card) return;
+      const win = window.open('', '_blank');
+      if (!win) return;
+      win.document.write('<html><head><title>打印期末评语卡片</title>');
+      win.document.write('<style>body{margin:20px;font-family:"Microsoft YaHei",sans-serif;} .term-card{max-width:420px;margin:0 auto;}</style>');
+      win.document.write('</head><body>');
+      win.document.write('<div class="term-card">' + card.innerHTML + '</div>');
+      win.document.write('</body></html>');
+      win.document.close();
+      win.focus();
+      win.print();
+    },
+    openTermCommentPreviewWindow() {
+      const card = document.getElementById('termCommentCard');
+      if (!card) return;
+      const win = window.open('', '_blank');
+      if (!win) return;
+      win.document.write('<html><head><title>期末评语卡片预览</title>');
+      win.document.write('<style>body{margin:20px;background:#fdf2f2;font-family:"Microsoft YaHei",sans-serif;} .term-card{max-width:420px;margin:0 auto;}</style>');
+      win.document.write('</head><body>');
+      win.document.write('<div class="term-card">' + card.innerHTML + '</div>');
+      win.document.write('<p style="margin-top:12px;font-size:12px;color:#666;">提示：可以使用浏览器截图 / 右键「另存为」将卡片保存为图片。</p>');
+      win.document.write('</body></html>');
+      win.document.close();
+      win.focus();
+    },
+    generateSeatPlan(applyRules) {
+      const cols = parseInt((document.getElementById('seatCols') && document.getElementById('seatCols').value) || '8', 10) || 8;
+      const rows = parseInt((document.getElementById('seatRows') && document.getElementById('seatRows').value) || '6', 10) || 6;
+      const rules = this._getSeatRules();
+
+      const data = getUserData();
+      const cls = data.classes && this.currentClassId ? data.classes.find(x => x.id === this.currentClassId) : null;
+      if (!cls) { alert('请先创建/选择班级'); return; }
+
+      const total = rows * cols;
+      const students = this.students.slice();
+      if (students.length === 0) { alert('暂无学生'); return; }
+
+      // 继承锁定座位（固定分座）
+      const prev = cls.seatingPlan && Array.isArray(cls.seatingPlan.seats) ? cls.seatingPlan.seats : [];
+      const lockedSeats = prev.filter(s => s.locked && s.studentId);
+      const lockedStudentIds = new Set(lockedSeats.map(s => String(s.studentId)));
+
+      // 待分配学生
+      let candidates = students.filter(s => !lockedStudentIds.has(String(s.id)));
+
+      // 规则排序（可选）
+      if (applyRules && rules.lowVisionFront) {
+        const threshold = rules.visionThreshold;
+        const isLowVision = (stu) => {
+          const l = _parseNum(stu.visionLeft);
+          const r = _parseNum(stu.visionRight);
+          const m = Math.min(l ?? 99, r ?? 99);
+          return Number.isFinite(m) && m < threshold;
+        };
+        const low = candidates.filter(isLowVision);
+        const other = candidates.filter(s => !isLowVision(s));
+        // 各自打乱
+        const shuffle = (arr) => {
+          for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+          }
+          return arr;
+        };
+        candidates = [...shuffle(low), ...shuffle(other)];
+      } else {
+        // 全量打乱
+        for (let i = candidates.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+        }
+      }
+
+      const plan = { rows, cols, seats: [], rules: applyRules ? rules : null };
+      // 先放入锁定座位
+      lockedSeats.forEach(s => plan.seats.push({ r: s.r, c: s.c, studentId: s.studentId, locked: true }));
+
+      // 生成可用座位顺序：若应用规则且低视力前排，则前排座位优先填充
+      const allPositions = [];
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) allPositions.push({ r, c });
+      const isLockedPos = (pos) => plan.seats.some(s => s.r === pos.r && s.c === pos.c);
+      const freePositions = allPositions.filter(p => !isLockedPos(p));
+
+      let orderedPositions = freePositions;
+      if (applyRules && rules.lowVisionFront && rules.frontRows > 0) {
+        const front = freePositions.filter(p => p.r < rules.frontRows);
+        const rest = freePositions.filter(p => p.r >= rules.frontRows);
+        orderedPositions = [...front, ...rest];
+      }
+
+      // 分配
+      for (let i = 0; i < orderedPositions.length; i++) {
+        const pos = orderedPositions[i];
+        const stu = candidates[i];
+        if (!stu) break;
+        plan.seats.push({ r: pos.r, c: pos.c, studentId: stu.id, locked: false });
+      }
+
+      cls.seatingPlan = plan;
+      setUserData(data);
+      this.loadUserData();
+      this._renderSeatBoard(plan);
+    },
+    saveSeatPlan() {
+      const data = getUserData();
+      const cls = data.classes && this.currentClassId ? data.classes.find(x => x.id === this.currentClassId) : null;
+      if (!cls || !cls.seatingPlan) { alert('没有可保存的座位方案'); return; }
+      setUserData(data);
+      this.loadUserData();
+      alert('座位方案已保存（本班级）');
+    },
 
     // 通用数据保存方法，确保所有数据变更都触发多重存储机制
     saveData() {
@@ -7222,6 +7651,16 @@
     openAddStudentModal() {
       document.getElementById('addStudentId').value = '';
       document.getElementById('addStudentName').value = '';
+      const heightEl = document.getElementById('addStudentHeight');
+      const vL = document.getElementById('addStudentVisionLeft');
+      const vR = document.getElementById('addStudentVisionRight');
+      const pPhone = document.getElementById('addStudentParentPhone');
+      const fNote = document.getElementById('addStudentFamilyNote');
+      if (heightEl) heightEl.value = '';
+      if (vL) vL.value = '';
+      if (vR) vR.value = '';
+      if (pPhone) pPhone.value = '';
+      if (fNote) fNote.value = '';
       const container = document.getElementById('addStudentAvatarOptions');
       if (container) {
         container.innerHTML = AVATAR_OPTIONS.slice(0, 18).map((av, i) =>
@@ -7271,7 +7710,20 @@
       if (!name) { alert('请输入姓名'); return; }
       if (this.students.some(s => String(s.id) === String(id))) { alert('该学号已存在'); return; }
       const avatar = this._addStudentAvatar || AVATAR_OPTIONS[0] || '👦';
-      this.students.push({ id, name, points: 0, avatar });
+      const height = (document.getElementById('addStudentHeight') && document.getElementById('addStudentHeight').value || '').trim();
+      const visionLeft = (document.getElementById('addStudentVisionLeft') && document.getElementById('addStudentVisionLeft').value || '').trim();
+      const visionRight = (document.getElementById('addStudentVisionRight') && document.getElementById('addStudentVisionRight').value || '').trim();
+      const parentPhone = (document.getElementById('addStudentParentPhone') && document.getElementById('addStudentParentPhone').value || '').trim();
+      const familyNote = (document.getElementById('addStudentFamilyNote') && document.getElementById('addStudentFamilyNote').value || '').trim();
+
+      const student = { id, name, points: 0, avatar };
+      if (height) student.height = height;
+      if (visionLeft) student.visionLeft = visionLeft;
+      if (visionRight) student.visionRight = visionRight;
+      if (parentPhone) student.parentPhone = parentPhone;
+      if (familyNote) student.familyNote = familyNote;
+
+      this.students.push(student);
       this.saveStudents();
       this.closeAddStudentModal();
       this.renderStudents();
@@ -8812,10 +9264,6 @@
   document.getElementById('importFile').addEventListener('change', function (e) {
     const file = e.target.files[0];
     if (!file) return;
-    // 导入学生前确保已选中班级，否则会出现“导入成功但不显示/不落盘”
-    if (window.app && typeof window.app.ensureCurrentClassSelected === 'function') {
-      window.app.ensureCurrentClassSelected();
-    }
     const reader = new FileReader();
     reader.onload = function (ev) {
       try {
@@ -8869,39 +9317,6 @@
   });
 
   window.app = app;
-
-  // 确保存在可写入的当前班级（用于导入学生等操作）
-  app.ensureCurrentClassSelected = function () {
-    try {
-      const data = getUserData();
-      if (!data.classes) data.classes = [];
-      if (!data.currentClassId) {
-        if (data.classes.length === 0) {
-          const newClass = {
-            id: 'class_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            name: '默认班级',
-            students: [],
-            groups: [],
-            groupPointHistory: [],
-            stagePoints: 20,
-            totalStages: 10,
-            prizes: [],
-            lotteryPrizes: [],
-            broadcastMessages: ['欢迎来到童心宠伴！🎉'],
-            petCategoryPhotos: {}
-          };
-          data.classes.push(newClass);
-          data.currentClassId = newClass.id;
-        } else {
-          data.currentClassId = data.classes[0].id;
-        }
-        setUserData(data);
-      }
-      app.currentClassId = data.currentClassId;
-    } catch (e) {
-      console.warn('ensureCurrentClassSelected 失败:', e);
-    }
-  };
 
   function doImportBackup(backup) {
     if (!backup || !backup.userData) {

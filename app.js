@@ -337,6 +337,14 @@
     return `${year}-${year + 1}学年${term}`;
   }
 
+  function getTodayDateStr() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
   // 授权码管理
   const LICENSE_KEY = 'class_pet_licenses';
   const ACTIVATED_DEVICES_KEY = 'class_pet_activated_devices';
@@ -1723,7 +1731,9 @@
             broadcastMessages: cls.broadcastMessages,
             petCategoryPhotos: cls.petCategoryPhotos,
             // 排座位：按班级保存
-            seatingPlan: cls.seatingPlan
+            seatingPlan: cls.seatingPlan,
+            // 出勤记录：按班级保存
+            attendanceRecords: cls.attendanceRecords
           };
 
           // 学生列表：只保留与教学密切相关的字段（姓名、学号、积分、宠物状态等）
@@ -5981,6 +5991,88 @@
       if (modal) modal.classList.remove('show');
     },
 
+    openAttendanceTool() {
+      const modal = document.getElementById('attendanceModal');
+      if (!modal) return;
+      const dateEl = document.getElementById('attendanceDate');
+      if (dateEl && !dateEl.value) dateEl.value = getTodayDateStr();
+      this.renderAttendanceList();
+      modal.classList.add('show');
+    },
+    closeAttendanceTool() {
+      const modal = document.getElementById('attendanceModal');
+      if (modal) modal.classList.remove('show');
+    },
+    renderAttendanceList() {
+      const container = document.getElementById('attendanceList');
+      const dateEl = document.getElementById('attendanceDate');
+      if (!container || !dateEl) return;
+      const dateKey = dateEl.value || getTodayDateStr();
+      const data = getUserData();
+      const cls = data.classes && this.currentClassId ? data.classes.find(c => c.id === this.currentClassId) : null;
+      if (!cls) {
+        container.innerHTML = '<p class="placeholder-text">请先创建并选择一个班级。</p>';
+        return;
+      }
+      const records = cls.attendanceRecords && cls.attendanceRecords[dateKey] ? cls.attendanceRecords[dateKey] : {};
+      if (!this.students.length) {
+        container.innerHTML = '<p class="placeholder-text">当前班级暂无学生。</p>';
+        return;
+      }
+      const rows = this.students.map(stu => {
+        const rec = records[String(stu.id)] || { status: 'present', note: '' };
+        return `
+          <div class="attendance-row" data-id="${this.escape(String(stu.id))}">
+            <div>${this.escape(String(stu.id || ''))} - ${this.escape(String(stu.name || ''))}</div>
+            <div>
+              <select class="login-input attendance-status">
+                <option value="present" ${rec.status === 'present' ? 'selected' : ''}>出勤</option>
+                <option value="late" ${rec.status === 'late' ? 'selected' : ''}>迟到</option>
+                <option value="leave" ${rec.status === 'leave' ? 'selected' : ''}>请假</option>
+                <option value="absent" ${rec.status === 'absent' ? 'selected' : ''}>缺勤</option>
+              </select>
+            </div>
+            <div>
+              <input type="text" class="login-input attendance-note" placeholder="备注（可选）" value="${this.escape(String(rec.note || ''))}">
+            </div>
+          </div>
+        `;
+      }).join('');
+      container.innerHTML = rows;
+    },
+    markAllPresent() {
+      const rows = document.querySelectorAll('#attendanceList .attendance-row');
+      rows.forEach(row => {
+        const sel = row.querySelector('.attendance-status');
+        if (sel) sel.value = 'present';
+      });
+    },
+    saveAttendance() {
+      const dateEl = document.getElementById('attendanceDate');
+      if (!dateEl) return;
+      const dateKey = dateEl.value || getTodayDateStr();
+      const data = getUserData();
+      const cls = data.classes && this.currentClassId ? data.classes.find(c => c.id === this.currentClassId) : null;
+      if (!cls) { alert('请先选择班级'); return; }
+      if (!cls.attendanceRecords) cls.attendanceRecords = {};
+      const map = {};
+      document.querySelectorAll('#attendanceList .attendance-row').forEach(row => {
+        const id = row.getAttribute('data-id');
+        const sel = row.querySelector('.attendance-status');
+        const noteInput = row.querySelector('.attendance-note');
+        if (!id || !sel) return;
+        map[id] = {
+          status: sel.value || 'present',
+          note: (noteInput && noteInput.value || '').trim()
+        };
+      });
+      cls.attendanceRecords[dateKey] = map;
+      setUserData(data);
+      this.loadUserData();
+      alert('出勤记录已保存');
+    },
+
+
     openSeatArrangeTool() {
       const modal = document.getElementById('seatArrangeModal');
       if (!modal) { alert('排座位模块未加载'); return; }
@@ -6001,6 +6093,82 @@
     closeSeatArrangeModal() {
       const modal = document.getElementById('seatArrangeModal');
       if (modal) modal.classList.remove('show');
+    },
+
+    openSoundMonitorTool() {
+      const modal = document.getElementById('soundMonitorModal');
+      if (!modal) return;
+      const statusEl = document.getElementById('soundStatusText');
+      if (statusEl) statusEl.textContent = '尚未开始监听';
+      modal.classList.add('show');
+    },
+    closeSoundMonitorTool() {
+      const modal = document.getElementById('soundMonitorModal');
+      if (modal) modal.classList.remove('show');
+      this.stopSoundMonitor();
+    },
+    async startSoundMonitor() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('当前浏览器不支持麦克风访问，无法使用声贝管理。');
+        return;
+      }
+      if (this._soundStream) {
+        this._soundRunning = true;
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this._soundStream = stream;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtx();
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        src.connect(analyser);
+        this._soundAnalyser = analyser;
+        this._soundAudioCtx = ctx;
+        this._soundRunning = true;
+
+        const fill = document.getElementById('soundLevelFill');
+        const statusEl = document.getElementById('soundStatusText');
+        const thresholdEl = document.getElementById('soundThreshold');
+
+        const loop = () => {
+          if (!this._soundRunning || !this._soundAnalyser) return;
+          this._soundAnalyser.getByteTimeDomainData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length); // 0~1
+          const level = Math.min(100, Math.floor(rms * 200)); // 0~100
+          if (fill) fill.style.width = level + '%';
+
+          const threshold = parseInt(thresholdEl && thresholdEl.value || '40', 10) || 40;
+          if (statusEl) {
+            statusEl.textContent = level < threshold ? '当前较安静' : '当前声音偏大，请注意课堂纪律';
+          }
+          requestAnimationFrame(loop);
+        };
+        loop();
+      } catch (e) {
+        console.error('声贝监听失败:', e);
+        const statusEl = document.getElementById('soundStatusText');
+        if (statusEl) statusEl.textContent = '无法开启麦克风，请检查浏览器权限或设备设置。';
+      }
+    },
+    stopSoundMonitor() {
+      this._soundRunning = false;
+      if (this._soundStream) {
+        try { this._soundStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+        this._soundStream = null;
+      }
+      if (this._soundAudioCtx) {
+        try { this._soundAudioCtx.close(); } catch (e) {}
+        this._soundAudioCtx = null;
+      }
     },
     _getSeatRules() {
       const lowVisionFront = !!(document.getElementById('seatRuleLowVisionFront') && document.getElementById('seatRuleLowVisionFront').checked);

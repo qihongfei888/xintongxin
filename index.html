@@ -187,6 +187,16 @@
               <div class="tool-card-main">期末评语</div>
               <div class="tool-card-sub">自动生成 + 卡片导出</div>
             </button>
+            <button class="tool-card" onclick="app.openAttendanceTool()">
+              <div class="tool-card-icon">📋</div>
+              <div class="tool-card-main">出勤管理</div>
+              <div class="tool-card-sub">按日期标记出勤 / 请假</div>
+            </button>
+            <button class="tool-card" onclick="app.openSoundMonitorTool()">
+              <div class="tool-card-icon">🔊</div>
+              <div class="tool-card-main">声贝管理</div>
+              <div class="tool-card-sub">观察自习噪声情况</div>
+            </button>
           </div>
         </div>
       </section>
@@ -823,6 +833,58 @@
         <button class="btn btn-primary" onclick="app.assignStudentToSeat()">确定</button>
         <button class="btn btn-secondary" onclick="app.clearSeatStudent()">清空此座位</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 出勤管理弹窗 -->
+  <div id="attendanceModal" class="modal">
+    <div class="modal-content modal-content-large">
+      <button class="modal-close" onclick="app.closeAttendanceTool()">&times;</button>
+      <h3>📋 出勤管理</h3>
+      <div class="attendance-header">
+        <div class="form-group">
+          <label>日期</label>
+          <input type="date" id="attendanceDate" class="login-input">
+        </div>
+        <div class="form-group">
+          <button class="btn btn-secondary" onclick="app.markAllPresent()">全部标记为出勤</button>
+          <button class="btn btn-primary" onclick="app.saveAttendance()">保存本日出勤记录</button>
+        </div>
+      </div>
+      <div class="attendance-body" id="attendanceList">
+        <!-- JS 渲染 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 声贝管理弹窗 -->
+  <div id="soundMonitorModal" class="modal">
+    <div class="modal-content">
+      <button class="modal-close" onclick="app.closeSoundMonitorTool()">&times;</button>
+      <h3>🔊 声贝管理</h3>
+      <div class="form-group">
+        <label>规则说明</label>
+        <textarea id="soundRuleText" class="login-input" rows="2"
+          placeholder="例：本次自习 10 分钟内声音保持在绿色区，全班奖励 1 分。"></textarea>
+      </div>
+      <div class="form-group">
+        <label>声音阈值（越大越宽松）</label>
+        <input type="range" id="soundThreshold" min="5" max="100" value="40">
+      </div>
+      <div class="sound-meter">
+        <div class="sound-meter-bar">
+          <div id="soundLevelFill" class="sound-meter-fill"></div>
+        </div>
+        <div class="sound-meter-labels">
+          <span>安静</span><span>正常</span><span>嘈杂</span>
+        </div>
+        <div id="soundStatusText" class="sound-status-text">尚未开始监听</div>
+      </div>
+      <div class="term-actions">
+        <button class="btn btn-primary" onclick="app.startSoundMonitor()">开始监听</button>
+        <button class="btn btn-secondary" onclick="app.stopSoundMonitor()">暂停监听</button>
+      </div>
+      <p class="sound-tip">提示：首次使用会弹出浏览器麦克风权限窗口，请点“允许”。声贝数据仅用于本机课堂观察，不会上传到云端。</p>
     </div>
   </div>
 

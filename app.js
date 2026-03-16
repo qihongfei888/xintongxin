@@ -1286,6 +1286,13 @@
         // 加载班级列表
         this.classes = data.classes || [];
         this.currentClassId = data.currentClassId || null;
+
+        // 如果存在班级但未选中当前班级，则自动选中第一个班级，避免“有数据但不显示”
+        if (!this.currentClassId && this.classes.length > 0) {
+          this.currentClassId = this.classes[0].id;
+          data.currentClassId = this.currentClassId;
+          setUserData(data);
+        }
         
         // 加载当前班级数据
         const currentClass = this.classes.find(c => c.id === this.currentClassId);
@@ -5855,16 +5862,78 @@
 
     randomRollCall() {
       if (!this.students.length) { alert('暂无学生'); return; }
-      const idx = Math.floor(Math.random() * this.students.length);
-      const s = this.students[idx];
-      const div = document.createElement('div');
-      div.className = 'rollcall-overlay';
-      div.innerHTML = '<div class="rollcall-display">' + (s.avatar || '👦') + ' ' + this.escape(s.name) + '</div>';
-      div.onclick = () => div.remove();
-      document.body.appendChild(div);
-      // 语音播报学生名字
-      this.speak(`请${s.name}回答问题`);
-      setTimeout(() => div.remove(), 3000);
+
+      // 最终点到的学生：从全体学生里随机，保证公平
+      const chosen = this.students[Math.floor(Math.random() * this.students.length)];
+
+      // 构建名字螺旋滚动旋转效果（非3D）
+      const overlay = document.createElement('div');
+      overlay.className = 'rollcall-overlay';
+      overlay.innerHTML = `
+        <div class="rollcall-spiral">
+          <div class="rollcall-spiral-center">
+            <div class="rollcall-spiral-title">随机点名</div>
+            <div class="rollcall-spiral-sub">点击空白处可关闭</div>
+          </div>
+          <div class="rollcall-spiral-names"></div>
+        </div>
+      `;
+      overlay.onclick = () => overlay.remove();
+      document.body.appendChild(overlay);
+
+      // 取一部分学生参与动画，避免学生太多造成卡顿
+      const pool = this.students.slice();
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      const maxNames = Math.min(60, Math.max(18, pool.length));
+      const animList = pool.slice(0, maxNames);
+
+      const namesBox = overlay.querySelector('.rollcall-spiral-names');
+      animList.forEach((stu, i) => {
+        const el = document.createElement('div');
+        el.className = 'rollcall-name';
+        const angle = i * 0.6;
+        const radius = 10 + i * 6.2;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        el.style.transform = `translate(${x}px, ${y}px) rotate(${angle}rad)`;
+        el.textContent = stu.name || '';
+        namesBox.appendChild(el);
+      });
+
+      // 动画持续一小段时间后停下并显示结果
+      const DURATION_MS = 2600;
+      window.setTimeout(() => {
+        try {
+          const result = document.createElement('div');
+          result.className = 'rollcall-display rollcall-display-final';
+          result.innerHTML = `${chosen.avatar || '👦'} ${this.escape(chosen.name)}`;
+          overlay.querySelector('.rollcall-spiral').appendChild(result);
+          // 语音播报
+          this.speak(`请${chosen.name}回答问题`);
+        } catch (e) {}
+      }, DURATION_MS);
+
+      // 自动关闭稍后关闭
+      window.setTimeout(() => {
+        if (overlay && overlay.parentNode) overlay.remove();
+      }, DURATION_MS + 2200);
+    },
+
+    toggleToolsMenu(e) {
+      try {
+        if (e && e.stopPropagation) e.stopPropagation();
+        const menu = document.getElementById('toolsMenu');
+        if (!menu) return;
+        const isOpen = menu.style.display !== 'none';
+        menu.style.display = isOpen ? 'none' : 'block';
+      } catch (err) {}
+    },
+    closeToolsMenu() {
+      const menu = document.getElementById('toolsMenu');
+      if (menu) menu.style.display = 'none';
     },
 
     // 通用数据保存方法，确保所有数据变更都触发多重存储机制
@@ -8743,6 +8812,10 @@
   document.getElementById('importFile').addEventListener('change', function (e) {
     const file = e.target.files[0];
     if (!file) return;
+    // 导入学生前确保已选中班级，否则会出现“导入成功但不显示/不落盘”
+    if (window.app && typeof window.app.ensureCurrentClassSelected === 'function') {
+      window.app.ensureCurrentClassSelected();
+    }
     const reader = new FileReader();
     reader.onload = function (ev) {
       try {
@@ -8796,6 +8869,39 @@
   });
 
   window.app = app;
+
+  // 确保存在可写入的当前班级（用于导入学生等操作）
+  app.ensureCurrentClassSelected = function () {
+    try {
+      const data = getUserData();
+      if (!data.classes) data.classes = [];
+      if (!data.currentClassId) {
+        if (data.classes.length === 0) {
+          const newClass = {
+            id: 'class_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            name: '默认班级',
+            students: [],
+            groups: [],
+            groupPointHistory: [],
+            stagePoints: 20,
+            totalStages: 10,
+            prizes: [],
+            lotteryPrizes: [],
+            broadcastMessages: ['欢迎来到童心宠伴！🎉'],
+            petCategoryPhotos: {}
+          };
+          data.classes.push(newClass);
+          data.currentClassId = newClass.id;
+        } else {
+          data.currentClassId = data.classes[0].id;
+        }
+        setUserData(data);
+      }
+      app.currentClassId = data.currentClassId;
+    } catch (e) {
+      console.warn('ensureCurrentClassSelected 失败:', e);
+    }
+  };
 
   function doImportBackup(backup) {
     if (!backup || !backup.userData) {
@@ -8942,6 +9048,14 @@
     }
     
     // 先绑定所有事件监听器
+    // 顶部导航「小工具」菜单：点击页面其它区域时自动关闭
+    document.addEventListener('click', function () {
+      try {
+        if (window.app && typeof window.app.closeToolsMenu === 'function') {
+          window.app.closeToolsMenu();
+        }
+      } catch (e) {}
+    });
     document.querySelectorAll('.login-tab').forEach(function (tabEl) {
       tabEl.addEventListener('click', function (e) {
         var t = e.currentTarget.dataset.tab;

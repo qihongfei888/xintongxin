@@ -1941,11 +1941,114 @@ body::before {
   box-shadow: 0 20px 60px var(--shadow);
   animation: rollcallPop 0.5s ease;
 }
+.rollcall-display-final {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1003;
+  transform: translate(-50%, -50%);
+  padding: 18px 26px;
+  font-size: 2.1rem;
+  border-radius: 22px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.28);
+}
 @keyframes rollcallPop {
   from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
   to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 .rollcall-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 1000; cursor: pointer; }
+
+/* 螺旋滚动点名效果（非3D） */
+.rollcall-spiral{
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(92vw, 760px);
+  height: min(72vh, 540px);
+  transform: translate(-50%, -50%);
+  border-radius: 28px;
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.08) 35%, rgba(255,255,255,0.0) 65%),
+              linear-gradient(135deg, rgba(255,107,107,0.75), rgba(255,230,109,0.65));
+  backdrop-filter: blur(8px);
+  box-shadow: 0 30px 90px rgba(0,0,0,0.25);
+  overflow: hidden;
+  z-index: 1001;
+}
+.rollcall-spiral-center{
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  right: 18px;
+  display:flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: rgba(255,255,255,0.95);
+  text-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  pointer-events: none;
+  z-index: 1002;
+}
+.rollcall-spiral-title{ font-size: 1.2rem; font-weight: 700; }
+.rollcall-spiral-sub{ font-size: 0.9rem; opacity: 0.9; }
+.rollcall-spiral-names{
+  position: absolute;
+  top: 52%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform: translate(-50%, -50%);
+  animation: rollcallSpiralRise 2.6s ease-in-out forwards;
+}
+.rollcall-name{
+  position: absolute;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.22);
+  border: 1px solid rgba(255,255,255,0.28);
+  color: rgba(255,255,255,0.95);
+  font-size: 0.98rem;
+  white-space: nowrap;
+  box-shadow: 0 10px 26px rgba(0,0,0,0.12);
+  transform-origin: 0 0;
+  animation: rollcallNameFloat 2.6s ease-in-out forwards;
+}
+@keyframes rollcallSpiralRise{
+  0%{ transform: translate(-50%, -35%) rotate(0deg); }
+  100%{ transform: translate(-50%, -70%) rotate(900deg); }
+}
+@keyframes rollcallNameFloat{
+  0%{ opacity: 0.0; filter: blur(1px); }
+  15%{ opacity: 0.9; filter: blur(0px); }
+  100%{ opacity: 0.85; }
+}
+
+/* 顶部导航小工具下拉 */
+.nav-tools{ position: relative; display: inline-flex; }
+.nav-tools-menu{
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  min-width: 160px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(255,255,255,0.9);
+  box-shadow: 0 14px 40px rgba(0,0,0,0.18);
+  z-index: 3000;
+}
+.nav-tools-item{
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 10px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.nav-tools-item:hover{
+  background: rgba(255,107,107,0.12);
+}
 
 /* 批量积分学生列表 */
 .batch-student-item {

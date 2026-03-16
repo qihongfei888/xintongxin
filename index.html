@@ -126,6 +126,12 @@
         <button class="nav-btn" data-page="students"><svg class="nav-icon" aria-hidden="true"><use href="#icon-users"/></svg> 学生管理</button>
         <button class="nav-btn" data-page="groups"><svg class="nav-icon" aria-hidden="true"><use href="#icon-users"/></svg> 小组管理</button>
         <button class="nav-btn" data-page="pets"><svg class="nav-icon" aria-hidden="true"><use href="#icon-pet"/></svg> 领养宠物</button>
+        <div class="nav-tools">
+          <button type="button" class="nav-btn nav-tools-btn" onclick="app.toggleToolsMenu(event)"><span class="nav-icon" aria-hidden="true">🧰</span> 小工具</button>
+          <div class="nav-tools-menu" id="toolsMenu" style="display:none">
+            <button type="button" class="nav-tools-item" onclick="app.randomRollCall(); app.closeToolsMenu()">🎲 随机点名</button>
+          </div>
+        </div>
         <button class="nav-btn" data-page="honor"><svg class="nav-icon" aria-hidden="true"><use href="#icon-trophy"/></svg> 光荣榜</button>
         <button class="nav-btn" data-page="store"><svg class="nav-icon" aria-hidden="true"><use href="#icon-cart"/></svg> 勋章商店</button>
         <button class="nav-btn" data-page="settings"><svg class="nav-icon" aria-hidden="true"><use href="#icon-settings"/></svg> 系统设置</button>
@@ -176,7 +182,7 @@
             <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none">
             <button class="btn btn-secondary" onclick="app.batchScoreModal()">批量加分/减分</button>
             <button class="btn btn-secondary" onclick="app.batchFeedModal()">批量喂养</button>
-            <button class="btn btn-secondary" onclick="app.randomRollCall()">🎲 随机点名</button>
+            <!-- 随机点名入口移至「领养宠物」旁边的小工具区 -->
             <button class="btn btn-outline" onclick="app.exportToExcel()">导出Excel</button>
           </div>
         </div>
@@ -232,6 +238,7 @@
         <div class="page-header">
           <h2>🐣 领养宠物</h2>
           <p class="hint">选择一名学生后，可为其领养宠物，支持上传自定义卡通动物照片</p>
+          <!-- 随机点名入口已放在顶部导航「领养宠物」旁 -->
         </div>
         <div class="pet-adopt-flow">
           <div class="student-select-area">

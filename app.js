@@ -2835,6 +2835,13 @@
                   setUserData(updatedData);
                   syncSuccess = true;
                   console.log('从Bmob REST同步成功，数据已更新');
+                  // 立即刷新内存与界面，避免“拉取完成但没数据显示”
+                  this.loadUserData();
+                  this.updateClassSelect();
+                  this.renderDashboard();
+                  this.renderStudents();
+                  this.renderHonor();
+                  this.renderStore();
                 } else {
                   console.log('保留本地数据，未用云端覆盖');
                 }

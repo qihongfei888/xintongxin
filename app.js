@@ -2342,8 +2342,12 @@
               console.log('云端同步完成');
               // 同步完成后，尝试从云端拉取最新数据，确保多端数据一致
               try {
-                await this.syncFromCloud();
-                console.log('从云端拉取最新数据完成');
+                const pulled = await this.syncFromCloud();
+                if (pulled) {
+                  console.log('从云端拉取最新数据完成');
+                } else {
+                  console.log('从云端未拉取到新数据，保持使用本地数据');
+                }
               } catch (e) {
                 console.error('从云端拉取数据失败:', e);
               }
@@ -2564,17 +2568,14 @@
           if (statusEl) statusEl.textContent = '云同步状态：上传失败，数据已保存在本地';
         } else {
           if (statusEl) statusEl.textContent = '云同步状态：✅ 上传成功';
+          this.lastSyncTime = now;
+          this.dataChanged = false;
+          this.pendingChanges = 0;
         }
-        
-        // 无论是否上传成功，都用「完整数据」更新本地并重载，避免被精简版覆盖
-        setUserData(userData);
-        this.loadUserData();
         
       } catch (e) {
         console.error('云同步失败:', e);
         if (statusEl) statusEl.textContent = '云同步状态：上传异常，数据已保存在本地';
-        // 异常时不再自动恢复，避免过多API请求
-        // 数据已保存到本地，下次同步时会重试
       } finally {
         this.syncing = false;
         if (btnUpload) btnUpload.disabled = false;
@@ -3083,8 +3084,12 @@
         this.syncing = false;
         if (!skipSessionCheck && btnUpload) btnUpload.disabled = false;
         if (!skipSessionCheck && btnDownload) btnDownload.disabled = false;
-        if (!skipSessionCheck && statusEl && !syncSuccess) {
-          statusEl.textContent = '云同步状态：未从云端加载任何数据（可能云端暂无数据）';
+        if (!skipSessionCheck && statusEl) {
+          if (syncSuccess) {
+            statusEl.textContent = '云同步状态：已从云端恢复到本机';
+          } else {
+            statusEl.textContent = '云同步状态：未从云端加载任何数据（可能云端暂无数据，请先在有数据设备点「上传到云端」）';
+          }
         }
       }
       
@@ -3106,8 +3111,16 @@
                 lastModified: parsedData.timestamp
               };
               setUserData(updatedData);
+              this.loadUserData();
+              this.renderDashboard();
+              this.renderStudents();
+              this.renderHonor();
+              this.renderStore();
               console.log('从本地备份加载成功，数据已更新');
               syncSuccess = true;
+              if (!skipSessionCheck && statusEl) {
+                statusEl.textContent = '云同步状态：已从本地备份恢复';
+              }
             }
           }
         } catch (localError) {
@@ -3173,13 +3186,11 @@
     
     // 启用自动同步和备份 - 大幅减少云端操作
     enableAutoSync() {
-      // 如果已经启用，先禁用之前的定时器，避免重复创建
       if (this.autoSyncInterval) {
         clearInterval(this.autoSyncInterval);
         this.autoSyncInterval = null;
       }
       
-      // 每5分钟：保存本地 + 从云端拉取最新（多端同步）+ 有变更时上传 + 定期备份
       this.autoSyncInterval = setInterval(async () => {
         const now = Date.now();
         this.saveUserData();
@@ -3189,8 +3200,7 @@
           return;
         }
 
-        // 多端同步：定期从云端拉取，使每个端口都能看到最新数据
-        if (this.currentUserId && (now - (this.lastPullFromCloud || 0)) >= 5 * 60 * 1000) {
+        if (this.currentUserId && (now - (this.lastPullFromCloud || 0)) >= 10 * 60 * 1000) {
           this.lastPullFromCloud = now;
           try {
             const updated = await this.syncFromCloud();
@@ -3208,10 +3218,9 @@
           }
         }
 
-        // 有本地变更时上传到云端
         if (this.dataChanged) {
           const timeSinceLastSync = now - this.lastSyncAttempt;
-          if (timeSinceLastSync >= 2 * 60 * 1000 || this.pendingChanges >= 5) {
+          if (timeSinceLastSync >= 5 * 60 * 1000 || this.pendingChanges >= 10) {
             try {
               this.showSyncStatus('正在同步数据...', 'info');
               await this.syncData();
@@ -3222,8 +3231,7 @@
           }
         }
 
-        // 每30分钟自动备份到云端
-        if (!this.lastBackupTime || now - this.lastBackupTime >= 30 * 60 * 1000) {
+        if (!this.lastBackupTime || now - this.lastBackupTime >= 60 * 60 * 1000) {
           if (this.currentUserId) {
             try {
               await this.backupCloudData();
@@ -3234,7 +3242,7 @@
             }
           }
         }
-      }, 5 * 60 * 1000); // 每5分钟
+      }, 10 * 60 * 1000);
     },
     
     // 禁用自动同步

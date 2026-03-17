@@ -695,29 +695,17 @@
       console.error('从localStorage获取数据失败:', e);
     }
 
-    // 3. 尝试从默认键恢复数据（关键修复：防止数据丢失）
-    try {
-      const defaultDataStr = localStorage.getItem('class_pet_default_user');
-      if (defaultDataStr) {
-        const defaultData = JSON.parse(defaultDataStr);
-        if (defaultData && defaultData.classes && defaultData.classes.length > 0) {
-          console.log('从默认键恢复数据成功，班级数:', defaultData.classes.length);
-          memoryStorage[key] = defaultData;
-          localStorage.setItem(key, JSON.stringify(defaultData));
-          return defaultData;
-        }
-      }
-    } catch (e) {
-      console.error('从默认键恢复数据失败:', e);
-    }
-
-    // 4. 尝试从本地备份键恢复数据
+    // 3. 尝试从本地备份键恢复数据（仅限本账号）
     try {
       const backupKey = 'class_pet_local_' + userId;
       const backupStr = localStorage.getItem(backupKey);
       if (backupStr) {
         const backupObj = JSON.parse(backupStr);
-        if (backupObj && backupObj.data && backupObj.data.classes && backupObj.data.classes.length > 0) {
+        // 仅当备份里“确实有学生数据”才用于恢复，避免空备份覆盖
+        const backupData = backupObj && backupObj.data;
+        const classes = (backupData && Array.isArray(backupData.classes)) ? backupData.classes : [];
+        const meaningful = classes.some(c => Array.isArray(c.students) && c.students.length > 0);
+        if (meaningful) {
           console.log('从本地备份键恢复数据成功，班级数:', backupObj.data.classes.length);
           memoryStorage[key] = backupObj.data;
           localStorage.setItem(key, JSON.stringify(backupObj.data));
@@ -831,10 +819,8 @@
     memoryStorage[key] = data;
     try {
       localStorage.setItem(key, JSON.stringify(data));
-      // 同时更新默认键，确保数据不会丢失
+      // 同步写入本地备份键（仅该账号），刷新后若云端同步失败可从备份键加载
       if (userId) {
-        localStorage.setItem('class_pet_default_user', JSON.stringify(data));
-        // 同步写入本地备份键，刷新后若云端同步失败可从备份键加载
         const backupKey = 'class_pet_local_' + userId;
         const timestamp = (data && data.lastModified) || new Date().toISOString();
         localStorage.setItem(backupKey, JSON.stringify({ data: data, timestamp: timestamp }));
@@ -873,9 +859,6 @@
           }
           // 再次尝试保存
           localStorage.setItem(key, JSON.stringify(data));
-          if (userId) {
-            localStorage.setItem('class_pet_default_user', JSON.stringify(data));
-          }
           console.log('清理后保存成功');
           return; // 保存成功，直接返回
         } catch (e2) {
@@ -892,12 +875,6 @@
       IndexedDBManager.setItem(key, data).catch(function(e) {
         console.error('IndexedDB 写入失败:', e);
       });
-      // 同时更新默认键，确保数据不会丢失
-      if (userId) {
-        IndexedDBManager.setItem('class_pet_default_user', data).catch(function(e) {
-          console.error('IndexedDB 写入默认键失败:', e);
-        });
-      }
       // 如果没有用户ID但有保存的用户ID，也更新用户特定的键
       if (!userId) {
         const currentUserStr = localStorage.getItem(CURRENT_USER_KEY);
@@ -2578,11 +2555,11 @@
         // 4. 更新数据的最后修改时间
         compressedData.lastModified = now;
         
-        // 5. 优先使用本地存储（云端用精简版，本地继续保存完整数据）
+        // 5. 本地备份（仅本账号）：保存完整数据，避免精简版导致本地“看起来丢数据”
         try {
           const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
           localStorage.setItem(backupKey, JSON.stringify({
-            data: compressedData,
+            data: userData,
             timestamp: now
           }));
           console.log('数据已存储到本地');

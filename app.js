@@ -3454,7 +3454,12 @@
         }
       }
 
-      return plusItems && plusItems.length > 0 ? plusItems : DEFAULT_PLUS_ITEMS;
+      // 新规则：
+      // - 不再自动显示默认加分项；只有老师手动添加的才显示
+      // - 上限 8 个
+      const MAX_PLUS_ITEMS = 8;
+      const list = (plusItems && plusItems.length > 0) ? plusItems : [];
+      return list.slice(0, MAX_PLUS_ITEMS);
     },
     getMinusItems() {
       const data = getUserData();
@@ -3479,7 +3484,12 @@
         }
       }
 
-      return minusItems && minusItems.length > 0 ? minusItems : DEFAULT_MINUS_ITEMS;
+      // 新规则：
+      // - 不再自动显示默认扣分项；只有老师手动添加的才显示
+      // - 上限 6 个
+      const MAX_MINUS_ITEMS = 6;
+      const list = (minusItems && minusItems.length > 0) ? minusItems : [];
+      return list.slice(0, MAX_MINUS_ITEMS);
     },
     getPrizes() {
       const data = getUserData();
@@ -3939,12 +3949,12 @@
             <div class="student-stat">积分：<strong>${s.points ?? 0}</strong></div>
           </div>
         </div>
-        <div class="modal-score-section">
-          <p><strong>加分</strong></p>
-          <div class="score-btns">${plusBtns}</div>
-          <p><strong>扣分</strong></p>
-          <div class="score-btns">${minusBtns}</div>
-        </div>
+        ${(plusItems.length || minusItems.length) ? `
+          <div class="modal-score-section">
+            ${plusItems.length ? `<p><strong>加分</strong></p><div class="score-btns">${plusBtns}</div>` : ''}
+            ${minusItems.length ? `<p><strong>扣分</strong></p><div class="score-btns">${minusBtns}</div>` : ''}
+          </div>
+        ` : ''}
         ${toNextTip}
         ${petSection}
         ${completedHtml}
@@ -5567,14 +5577,14 @@
           <input type="number" value="${item.points}" data-index="${i}" data-type="plus" data-field="points" style="width:70px" placeholder="分">
           <button class="btn-remove" onclick="app.removeScoreItem('plus',${i})">删除</button>
         </div>
-      `).join('');
+      `).join('') || '<p class="placeholder-text">未添加加分项（最多 8 个）</p>';
       document.getElementById('plusItemsList').innerHTML = html;
       document.querySelectorAll('#plusItemsList input').forEach(inp => {
         inp.addEventListener('change', () => {
           const data = getUserData();
           const currentClass = data.classes && this.currentClassId ? data.classes.find(c => c.id === this.currentClassId) : null;
           if (currentClass) {
-            const arr = currentClass.plusItems || [...DEFAULT_PLUS_ITEMS];
+            const arr = currentClass.plusItems || [];
             const i = parseInt(inp.dataset.index, 10);
             if (arr[i]) arr[i][inp.dataset.field] = inp.dataset.field === 'points' ? parseInt(inp.value, 10) || 0 : inp.value;
             currentClass.plusItems = arr;
@@ -5592,14 +5602,14 @@
           <input type="number" value="${item.points}" data-index="${i}" data-type="minus" data-field="points" style="width:70px" placeholder="分">
           <button class="btn-remove" onclick="app.removeScoreItem('minus',${i})">删除</button>
         </div>
-      `).join('');
+      `).join('') || '<p class="placeholder-text">未添加扣分项（最多 6 个）</p>';
       document.getElementById('minusItemsList').innerHTML = html;
       document.querySelectorAll('#minusItemsList input').forEach(inp => {
         inp.addEventListener('change', () => {
           const data = getUserData();
           const currentClass = data.classes && this.currentClassId ? data.classes.find(c => c.id === this.currentClassId) : null;
           if (currentClass) {
-            const arr = currentClass.minusItems || [...DEFAULT_MINUS_ITEMS];
+            const arr = currentClass.minusItems || [];
             const i = parseInt(inp.dataset.index, 10);
             if (arr[i]) arr[i][inp.dataset.field] = inp.dataset.field === 'points' ? Math.abs(parseInt(inp.value, 10) || 0) : inp.value;
             currentClass.minusItems = arr;
@@ -5614,8 +5624,12 @@
       const data = getUserData();
       const currentClass = data.classes && this.currentClassId ? data.classes.find(c => c.id === this.currentClassId) : null;
       if (currentClass) {
-        const defaultItems = type === 'plus' ? DEFAULT_PLUS_ITEMS : DEFAULT_MINUS_ITEMS;
-        const arr = type === 'plus' ? (currentClass.plusItems || [...defaultItems]) : (currentClass.minusItems || [...defaultItems]);
+        const max = type === 'plus' ? 8 : 6;
+        const arr = type === 'plus' ? (currentClass.plusItems || []) : (currentClass.minusItems || []);
+        if (arr.length >= max) {
+          alert(`最多只能添加 ${max} 个${type === 'plus' ? '加分' : '扣分'}项`);
+          return;
+        }
         arr.push({ name: '新项目', points: 1 });
         if (type === 'plus') {
           currentClass.plusItems = arr;
@@ -5631,8 +5645,7 @@
       const data = getUserData();
       const currentClass = data.classes && this.currentClassId ? data.classes.find(c => c.id === this.currentClassId) : null;
       if (currentClass) {
-        const defaultItems = type === 'plus' ? DEFAULT_PLUS_ITEMS : DEFAULT_MINUS_ITEMS;
-        const arr = type === 'plus' ? (currentClass.plusItems || [...defaultItems]) : (currentClass.minusItems || [...defaultItems]);
+        const arr = type === 'plus' ? (currentClass.plusItems || []) : (currentClass.minusItems || []);
         arr.splice(index, 1);
         if (type === 'plus') {
           currentClass.plusItems = arr;
@@ -5650,8 +5663,8 @@
       const name = document.getElementById('scoreItemName').value.trim();
       const points = parseInt(document.getElementById('scoreItemPoints').value, 10) || 1;
       const editIndex = document.getElementById('scoreItemEditIndex').value;
-      const defaultItems = type === 'plus' ? DEFAULT_PLUS_ITEMS : DEFAULT_MINUS_ITEMS;
       const normalizedPoints = type === 'minus' ? Math.abs(points) : points;
+      const max = type === 'plus' ? 8 : 6;
 
       const data = getUserData();
       if (!data || !Array.isArray(data.classes)) {
@@ -5672,13 +5685,17 @@
       }
 
       const arr = type === 'plus'
-        ? (currentClass.plusItems || [...defaultItems])
-        : (currentClass.minusItems || [...defaultItems]);
+        ? (currentClass.plusItems || [])
+        : (currentClass.minusItems || []);
 
       if (editIndex !== '' && editIndex !== undefined) {
         const i = parseInt(editIndex, 10);
         if (arr[i]) arr[i] = { name, points: normalizedPoints };
       } else {
+        if (arr.length >= max) {
+          alert(`最多只能添加 ${max} 个${type === 'plus' ? '加分' : '扣分'}项`);
+          return;
+        }
         arr.push({ name, points: normalizedPoints });
       }
 
@@ -5813,6 +5830,12 @@
     },
 
     addScoreItemModal(type) {
+      const max = type === 'plus' ? 8 : 6;
+      const curLen = (type === 'plus' ? this.getPlusItems() : this.getMinusItems()).length;
+      if (curLen >= max) {
+        alert(`最多只能添加 ${max} 个${type === 'plus' ? '加分' : '扣分'}项`);
+        return;
+      }
       document.getElementById('scoreItemModalTitle').textContent = type === 'plus' ? '添加加分项' : '添加扣分项';
       document.getElementById('scoreItemType').value = type;
       document.getElementById('scoreItemEditIndex').value = '';

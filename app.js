@@ -300,7 +300,8 @@
     groups: 'class_pet_groups',
     groupPointHistory: 'class_pet_group_point_history',
     petCategoryPhotos: 'class_pet_pet_category_photos',
-    className: 'class_pet_class_name'
+    className: 'class_pet_class_name',
+    cardPrizes: 'class_pet_card_prizes'
   };
   const USER_LIST_KEY = 'class_pet_user_list';
   const USER_DATA_PREFIX = 'class_pet_user_data_';
@@ -2797,8 +2798,8 @@
       if (!cloudData || typeof cloudData !== 'object') return false;
       const localClasses = (localData && localData.classes) ? localData.classes : [];
       const cloudClasses = (cloudData.classes && Array.isArray(cloudData.classes)) ? cloudData.classes : [];
-      const localHasData = localClasses.length > 0;
-      const cloudHasData = cloudClasses.length > 0;
+      const localHasData = localClasses.some(c => Array.isArray(c.students) && c.students.length > 0);
+      const cloudHasData = cloudClasses.some(c => Array.isArray(c.students) && c.students.length > 0);
       if (localHasData && !cloudHasData) {
         console.log('跳过用空云端数据覆盖本地数据，保留本地');
         return false;
@@ -2818,12 +2819,11 @@
       }
       
       // 登录场景优先保护本地完整数据：
-      // 如果本地已经有班级/学生等数据，则认为本地是“权威源”，
-      // 直接返回 false，让上层逻辑走“使用本地数据并尝试上传到云端”的分支，避免被不完整的云端数据覆盖。
+      // 只有当本地“确实有学生数据”时，才认为本地是权威源并跳过云端覆盖。
+      // 避免新设备自动生成空班级后，被误判为“本地有数据”，从而导致“云端恢复成功但没数据”。
       try {
-        const localData = getUserData();
-        const localClasses = (localData && Array.isArray(localData.classes)) ? localData.classes : [];
-        if (skipSessionCheck && localClasses.length > 0) {
+        const localHasMeaningful = hasMeaningfulUserData();
+        if (skipSessionCheck && localHasMeaningful) {
           console.log('登录场景下本地已有数据，跳过从云端覆盖本地，后续将以本地为准同步到云端');
           return false;
         }
@@ -4033,6 +4033,10 @@
       s.points = (s.points || 0) + delta;
       if (!s.scoreHistory) s.scoreHistory = [];
       s.scoreHistory.unshift({ time: Date.now(), delta, reason: item.name });
+      // 负分触发宠物退化逻辑
+      if (delta < 0) {
+        this.applyPetDegenerationOnScoreChange(s, delta);
+      }
       this.saveStudents();
       this.renderStudents();
       this.renderHonor();
@@ -4041,6 +4045,49 @@
       // 添加到广播站
       this.addBroadcastMessage(s.name, delta, item.name);
       if (document.getElementById('studentModal').classList.contains('show')) this.openStudentModal(studentId);
+    },
+
+    // 减分导致宠物退化 / 饥饿逻辑
+    applyPetDegenerationOnScoreChange(student, delta) {
+      try {
+        if (!student || !student.pet) return;
+        const s = student;
+        const pet = s.pet;
+        if (pet.completed) return; // 已养成的宠物不再退化
+        const stagePoints = this.getStagePoints();
+        let stage = pet.stage || 1;
+        let progress = pet.stageProgress || 0;
+        // 只处理负向变更
+        const loss = Math.abs(delta);
+        progress -= loss;
+
+        let downgraded = false;
+        while (progress < 0 && stage > 1) {
+          stage -= 1;
+          progress += stagePoints;
+          downgraded = true;
+          // 每退化一级提醒一次
+          this.speak('我好饿，好久没有喂我了');
+        }
+
+        // 已经退回到第1级并且进度也耗尽，认为宠物“饿死”
+        if (stage === 1 && progress <= 0) {
+          progress = 0;
+          if (!pet.isDead) {
+            pet.isDead = true;
+            this.speak(`${s.name} 的宠物太久没被照顾，已经饿死了…`);
+          }
+        }
+
+        pet.stage = stage;
+        pet.stageProgress = Math.max(0, progress);
+
+        if (downgraded && !pet.isDead) {
+          console.log(`学生 ${s.name} 的宠物退化到阶段 ${stage}，当前进度 ${pet.stageProgress}/${stagePoints}`);
+        }
+      } catch (e) {
+        console.warn('宠物退化逻辑出错:', e);
+      }
     },
 
     // 广播设置存储键

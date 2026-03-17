@@ -5650,14 +5650,49 @@
       const name = document.getElementById('scoreItemName').value.trim();
       const points = parseInt(document.getElementById('scoreItemPoints').value, 10) || 1;
       const editIndex = document.getElementById('scoreItemEditIndex').value;
-      const key = type === 'plus' ? STORAGE_KEYS.plusItems : STORAGE_KEYS.minusItems;
       const defaultItems = type === 'plus' ? DEFAULT_PLUS_ITEMS : DEFAULT_MINUS_ITEMS;
-      const arr = getStorage(key, defaultItems);
+      const normalizedPoints = type === 'minus' ? Math.abs(points) : points;
+
+      const data = getUserData();
+      if (!data || !Array.isArray(data.classes)) {
+        alert('未找到班级数据，请先创建/选择班级');
+        return;
+      }
+
+      // 如果只有一个班级但 currentClassId 为空，自动选中它，避免“添加无反应”
+      if (!this.currentClassId && data.classes.length === 1 && data.classes[0] && data.classes[0].id) {
+        this.currentClassId = data.classes[0].id;
+      }
+
+      const currentClass = this.currentClassId ? data.classes.find(c => c.id === this.currentClassId) : null;
+      if (!currentClass) {
+        alert('请先选择班级后再添加加分/扣分项');
+        return;
+      }
+
+      const arr = type === 'plus'
+        ? (currentClass.plusItems || [...defaultItems])
+        : (currentClass.minusItems || [...defaultItems]);
+
       if (editIndex !== '' && editIndex !== undefined) {
         const i = parseInt(editIndex, 10);
-        if (arr[i]) arr[i] = { name, points: type === 'minus' ? Math.abs(points) : points };
-      } else arr.push({ name, points: type === 'minus' ? Math.abs(points) : points });
-      setStorage(key, arr);
+        if (arr[i]) arr[i] = { name, points: normalizedPoints };
+      } else {
+        arr.push({ name, points: normalizedPoints });
+      }
+
+      if (type === 'plus') currentClass.plusItems = arr;
+      else currentClass.minusItems = arr;
+
+      // 兼容旧版：同步一份到全局（避免旧逻辑/迁移依赖）
+      try {
+        const key = type === 'plus' ? STORAGE_KEYS.plusItems : STORAGE_KEYS.minusItems;
+        setStorage(key, arr);
+      } catch (e) {
+        console.warn('保存全局加减分项失败（可忽略）', e);
+      }
+
+      setUserData(data);
       this.saveData();
       this.closeScoreItemModal();
       type === 'plus' ? this.renderPlusItems() : this.renderMinusItems();

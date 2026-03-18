@@ -1,6 +1,6 @@
 (function () {
   console.log('🚀 应用启动中...');
-  
+
   // 检查存储空间
   async function checkStorageSpace() {
     try {
@@ -43,7 +43,7 @@
   checkStorageSpace().then(info => {
     window.storageInfo = info;
   });
-
+  
   // Bmob 已弃用：保留空实现避免旧代码报错，不再做任何初始化或日志输出
   function initBmob() {
     return false;
@@ -154,8 +154,44 @@
 
     // 设置实时监听器（Bmob 2.5.30 可能报 415，失败时仅用定时同步）
     setupRealtimeListener() {
+      const userIdStr = String(this.userId || '').trim();
+      if (!userIdStr) return;
+
+      // 优先使用 Supabase Realtime（当前系统主云端）
+      try {
+        const client = ensureSupabaseClient();
+        if (client && typeof client.channel === 'function') {
+          const ch = client
+            .channel('realtime_user_' + userIdStr)
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'users', filter: 'id=eq.' + userIdStr },
+              (payload) => {
+                try {
+                  const row = payload && payload.new ? payload.new : null;
+                  if (row && row.data) {
+                    console.log('Supabase Realtime：收到云端更新，准备刷新本地数据');
+                    this.updateLocalData(row.data);
+                  }
+                } catch (e) {
+                  console.warn('处理 Supabase Realtime 更新失败:', e);
+                }
+              }
+            )
+            .subscribe((status) => {
+              console.log('Supabase Realtime 订阅状态:', status);
+            });
+
+          this.channels.userData = ch;
+          console.log('已启用 Supabase Realtime 监听');
+          return;
+        }
+      } catch (e) {
+        console.warn('Supabase Realtime 监听初始化失败，将尝试旧方案:', e);
+      }
+
+      // 兼容旧 Bmob（若存在）
       if (typeof Bmob === 'undefined') return;
-      const userIdStr = String(this.userId || 'default_user');
       try {
         const query = Bmob.Query('UserData');
         query.equalTo('userId', userIdStr);
@@ -168,7 +204,7 @@
             if (object && object.get) this.updateLocalData(object.get('data'));
           });
           subscription.on('delete', () => {});
-          console.log('实时同步监听器已设置');
+          console.log('Bmob 实时同步监听器已设置');
         }).catch((err) => {
           if (err && err.code === 415) console.warn('实时监听 415，已跳过');
           else console.warn('实时监听失败:', err);
@@ -203,17 +239,19 @@
         
         // 更新localStorage
         localStorage.setItem(key, JSON.stringify(data));
-        // 同时更新默认键，确保数据不会丢失
-        if (this.userId) {
-          localStorage.setItem('class_pet_default_user', JSON.stringify(data));
-          memoryStorage['class_pet_default_user'] = data;
-        }
         
         console.log('本地数据已更新');
         // 重新加载用户数据
         if (window.app) {
           console.log('触发app.loadUserData()');
           window.app.loadUserData();
+          try {
+            window.app.updateClassSelect();
+            window.app.renderDashboard();
+            window.app.renderStudents();
+            window.app.renderHonor();
+            window.app.renderStore();
+          } catch (e) {}
         }
       } catch (e) {
         console.error('更新本地数据失败:', e);
@@ -225,7 +263,7 @@
       try {
         if (window.app && typeof window.app.syncToCloud === 'function') {
           await window.app.syncToCloud(data);
-          return true;
+        return true;
         }
         console.log('未找到 app.syncToCloud，跳过旧同步逻辑');
         return false;
@@ -413,7 +451,7 @@
     if (license.expireAt && new Date(license.expireAt) < new Date()) {
       return { valid: false, message: '授权码已过期' };
     }
-    
+
     return { valid: true, license: license };
   }
   
@@ -650,11 +688,11 @@
         if (currentUserStr) {
           const currentUser = JSON.parse(currentUserStr);
           if (currentUser.id) userId = currentUser.id;
+          }
+        } catch (e) {
+          console.error('读取当前用户ID失败:', e);
         }
-      } catch (e) {
-        console.error('读取当前用户ID失败:', e);
       }
-    }
 
     // 未登录用户：返回一份临时数据结构，不写入任何账号，避免污染
     if (!userId) {
@@ -670,7 +708,7 @@
     }
 
     const key = USER_DATA_PREFIX + userId;
-
+    
     // 1. 尝试从内存存储获取
     try {
       const cached = memoryStorage[key];
@@ -681,7 +719,7 @@
     } catch (e) {
       console.error('从内存存储获取数据失败:', e);
     }
-
+    
     // 2. 尝试从 localStorage 获取
     try {
       const v = localStorage.getItem(key);
@@ -694,7 +732,7 @@
     } catch (e) {
       console.error('从localStorage获取数据失败:', e);
     }
-
+    
     // 3. 尝试从本地备份键恢复数据（仅限本账号）
     try {
       const backupKey = 'class_pet_local_' + userId;
@@ -711,8 +749,8 @@
           localStorage.setItem(key, JSON.stringify(backupObj.data));
           return backupObj.data;
         }
-      }
-    } catch (e) {
+        }
+      } catch (e) {
       console.error('从本地备份键恢复数据失败:', e);
     }
 
@@ -726,7 +764,7 @@
       theme: 'coral',
       lastModified: new Date().toISOString()
     };
-
+    
     try {
       memoryStorage[key] = data;
       localStorage.setItem(key, JSON.stringify(data));
@@ -734,7 +772,7 @@
     } catch (e) {
       console.error('保存当前用户默认数据失败:', e);
     }
-
+    
     return data;
   }
   
@@ -1000,7 +1038,7 @@
           try {
             console.log('本地未找到账号，尝试从 Supabase 查询账户...');
             const account = await supabaseFetchAccount(username, password);
-            if (account && account.user_id) {
+          if (account && account.user_id) {
               const userId = account.user_id;
               user = {
                 id: userId,
@@ -1090,7 +1128,7 @@
           try {
             console.log('登录时执行数据迁移...');
             await this.migrateDataFromOldStorage();
-          } catch (e) {
+              } catch (e) {
             console.error('数据迁移失败:', e);
           }
           
@@ -2297,19 +2335,19 @@
           await this.syncUserListToCloud();
           return true;
         }
-
+        
         const cloudPayload = data[0].data || {};
         if (cloudPayload && cloudPayload.users) {
           const cloudUsers = cloudPayload.users;
           const localUsers = getUserList();
-
+          
           const mergedUsers = [...cloudUsers];
           localUsers.forEach(localUser => {
             if (!mergedUsers.some(u => u.id === localUser.id)) {
               mergedUsers.push(localUser);
             }
           });
-
+          
           setUserList(mergedUsers);
           console.log('用户列表已从云端同步，用户数:', mergedUsers.length);
           return true;
@@ -2375,7 +2413,7 @@
               try {
                 const pulled = await this.syncFromCloud();
                 if (pulled) {
-                  console.log('从云端拉取最新数据完成');
+                console.log('从云端拉取最新数据完成');
                 } else {
                   console.log('从云端未拉取到新数据，保持使用本地数据');
                 }
@@ -2665,15 +2703,15 @@
         const payload = row.data || {};
         const licenses = payload.licenses;
 
-        if (licenses && Array.isArray(licenses)) {
+              if (licenses && Array.isArray(licenses)) {
           console.log('从 Supabase 同步授权码，数量:', licenses.length);
-          setLicenses(licenses);
-          return licenses;
+                setLicenses(licenses);
+                return licenses;
         }
       } catch (e) {
         console.error('同步授权码失败:', e);
       }
-
+      
       return null;
     },
     
@@ -2695,13 +2733,13 @@
           return false;
         }
         console.log('✅ 已通过 Supabase 上传用户数据');
-        return true;
+          return true;
       } catch (e) {
         console.warn('Supabase 上传失败:', e);
         return false;
       }
     },
-    
+
     // 仅更新云端 data 字段（不更新 sessionId），用于强制下线前保存本端数据
     async pushDataOnlyToCloud(objectId, userData) {
       if (!navigator.onLine) return false;
@@ -2720,7 +2758,7 @@
           .eq('id', objectId);
         if (error) {
           console.error('Supabase 保存数据失败:', error);
-          return false;
+        return false;
         }
         console.log('强制下线前已保存数据到 Supabase');
         return true;
@@ -2729,7 +2767,7 @@
         return false;
       }
     },
-    
+
     // 使用 Supabase 拉取 UserData（替代原 Bmob REST）
     async fetchUserDataViaRest(userIdStr) {
       const client = ensureSupabaseClient();
@@ -2826,7 +2864,7 @@
       if (!skipSessionCheck && btnDownload) btnDownload.disabled = true;
       let syncSuccess = false;
       const userIdStr = this.currentUserId ? String(this.currentUserId).trim() : '';
-      console.log('开始从Bmob同步数据，用户ID:', userIdStr || '(无)');
+        console.log('开始从Bmob同步数据，用户ID:', userIdStr || '(无)');
 
       try {
         // 1) 优先用 REST API 拉取，避免 SDK 在部分环境触发 415
@@ -3950,10 +3988,10 @@
           </div>
         </div>
         ${(plusItems.length || minusItems.length) ? `
-          <div class="modal-score-section">
+        <div class="modal-score-section">
             ${plusItems.length ? `<p><strong>加分</strong></p><div class="score-btns">${plusBtns}</div>` : ''}
             ${minusItems.length ? `<p><strong>扣分</strong></p><div class="score-btns">${minusBtns}</div>` : ''}
-          </div>
+        </div>
         ` : ''}
         ${toNextTip}
         ${petSection}
@@ -4815,14 +4853,14 @@
               } else {
                 // 中间阶段：成长期 - 调用本地照片（安全判空，避免 type 或 breed 未定义时报错）
                 if (type && breed && type.id && breed.id) {
-                  const photoPath = `photos/${type.id}/growing/${breed.id}_stage2.jpg`;
-                  petDisplayContent = `
-                    <img src="${photoPath}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 50%; margin-bottom: 8px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
-                    <span class="breed-icon" style="display:none">${(breed && breed.icon) || (type && type.icon) || '🐾'}</span>
-                  `;
+                const photoPath = `photos/${type.id}/growing/${breed.id}_stage2.jpg`;
+                petDisplayContent = `
+                  <img src="${photoPath}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 50%; margin-bottom: 8px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                  <span class="breed-icon" style="display:none">${(breed && breed.icon) || (type && type.icon) || '🐾'}</span>
+                `;
                 } else {
                   petDisplayContent = `<span class="pet-img">🐾</span>`;
-                }
+              }
               }
               petName = (breed && breed.name) || (type && type.name) || '宠物';
               foodStr = type && type.food ? type.food : '🍖';
@@ -5256,7 +5294,7 @@
           });
         }
       }
-
+      
       this.saveStudents();
       this.renderStudents();
       this.renderStore();
@@ -5404,16 +5442,16 @@
         alert('未找到该学生');
         return;
       }
-
+      
       const mode = modeEl.value === 'badges' ? 'badges' : 'points';
       const cost = Math.max(1, parseInt(costInput.value || '1', 10));
-
+      
       const prizes = getStorage(STORAGE_KEYS.lotteryPrizes, []);
       if (!prizes.length) {
         alert('暂无奖品，请在「系统设置 → 转盘奖品」中先添加奖品');
         return;
       }
-
+      
       if (mode === 'points') {
         const currentPoints = student.points ?? 0;
         if (currentPoints < cost) {
@@ -5469,7 +5507,7 @@
           } else {
             student.badgesSpent = (student.badgesSpent || 0) + cost;
           }
-          this.saveStudents();
+        this.saveStudents();
           this.renderStore();
           this.renderHonor();
 
@@ -5512,7 +5550,7 @@
             resultEl.textContent = '结算奖品时出错，请检查控制台日志。';
           }
         } finally {
-          btn.disabled = false;
+        btn.disabled = false;
           btn.textContent = '再扭一个';
           this.renderGachaStudentList();
           if (machine) machine.classList.remove('spinning');
@@ -5705,7 +5743,7 @@
       // 兼容旧版：同步一份到全局（避免旧逻辑/迁移依赖）
       try {
         const key = type === 'plus' ? STORAGE_KEYS.plusItems : STORAGE_KEYS.minusItems;
-        setStorage(key, arr);
+      setStorage(key, arr);
       } catch (e) {
         console.warn('保存全局加减分项失败（可忽略）', e);
       }
@@ -8599,7 +8637,7 @@
       
       const licenses = getLicenses();
       const newLicenses = [];
-      
+
       for (let i = 0; i < num; i++) {
         const newLicense = {
           key: generateLicenseKey(),
@@ -9743,9 +9781,9 @@
                   setUserData(parsed.data);
                   app.loadUserData();
                   console.log('已从本地备份键恢复数据');
-                }
-              }
-            } catch (e) {
+          }
+        }
+      } catch (e) {
               console.warn('从备份键恢复失败:', e);
             }
           }
@@ -9769,15 +9807,15 @@
             console.log('从内存存储自动登录：用户ID:', app.currentUserId, '用户名:', app.currentUsername);
             
             // 加载用户数据
-            app.loadUserData();
+          app.loadUserData();
             app.dataLoaded = true;
             
-            app.showApp();
+          app.showApp();
             app.enableRealtimeSync();
             app.enableAutoSync();
-            return;
-          }
-        }
+        return;
+      }
+    }
       } catch (e) {
         console.log('内存存储也不可用:', e);
       }

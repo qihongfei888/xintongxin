@@ -3295,14 +3295,17 @@
       
       this.autoSyncInterval = setInterval(async () => {
         const now = Date.now();
-        this.saveUserData();
+        // 仅在数据有变更时保存，避免无变化时频繁触发同步
+        if (this.dataChanged) {
+          this.saveUserData();
+        }
 
         if (!navigator.onLine) {
           console.log('无网络连接，仅保存本地');
           return;
         }
 
-        if (this.currentUserId && (now - (this.lastPullFromCloud || 0)) >= 10 * 60 * 1000) {
+        if (this.currentUserId && (now - (this.lastPullFromCloud || 0)) >= 30 * 1000) {
           this.lastPullFromCloud = now;
           try {
             const updated = await this.syncFromCloud();
@@ -3322,7 +3325,7 @@
 
         if (this.dataChanged) {
           const timeSinceLastSync = now - this.lastSyncAttempt;
-          if (timeSinceLastSync >= 5 * 60 * 1000 || this.pendingChanges >= 10) {
+          if (timeSinceLastSync >= 30 * 1000 || this.pendingChanges >= 5) {
             try {
               this.showSyncStatus('正在同步数据...', 'info');
               await this.syncData();
@@ -3344,7 +3347,7 @@
             }
           }
         }
-      }, 10 * 60 * 1000);
+      }, 30 * 1000); // 每30秒检查一次，确保跨端及时同步
     },
     
     // 禁用自动同步

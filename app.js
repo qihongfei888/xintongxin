@@ -3305,7 +3305,7 @@
           return;
         }
 
-        if (this.currentUserId && (now - (this.lastPullFromCloud || 0)) >= 30 * 1000) {
+        if (this.currentUserId && (now - (this.lastPullFromCloud || 0)) >= 2 * 60 * 1000) {
           this.lastPullFromCloud = now;
           try {
             const updated = await this.syncFromCloud();
@@ -3325,7 +3325,7 @@
 
         if (this.dataChanged) {
           const timeSinceLastSync = now - this.lastSyncAttempt;
-          if (timeSinceLastSync >= 30 * 1000 || this.pendingChanges >= 5) {
+          if (timeSinceLastSync >= 2 * 60 * 1000 || this.pendingChanges >= 10) {
             try {
               this.showSyncStatus('正在同步数据...', 'info');
               await this.syncData();
@@ -3347,7 +3347,7 @@
             }
           }
         }
-      }, 30 * 1000); // 每30秒检查一次，确保跨端及时同步
+      }, 2 * 60 * 1000); // 每2分钟检查一次，平衡跨端同步及时性与Supabase免费额度
     },
     
     // 禁用自动同步

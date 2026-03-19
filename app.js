@@ -2776,6 +2776,23 @@
       }
     },
 
+    // 轻量检查：只查云端 updated_at，不拉完整 data，节省 Supabase 额度
+    async fetchCloudTimestampOnly(userIdStr) {
+      const client = ensureSupabaseClient();
+      if (!client || !userIdStr) return null;
+      try {
+        const { data, error } = await client
+          .from('users')
+          .select('updated_at')
+          .eq('id', userIdStr)
+          .limit(1);
+        if (error || !data || data.length === 0) return null;
+        return data[0].updated_at;
+      } catch (e) {
+        return null;
+      }
+    },
+
     // 使用 Supabase 拉取 UserData（替代原 Bmob REST）
     async fetchUserDataViaRest(userIdStr) {
       const client = ensureSupabaseClient();
@@ -3308,15 +3325,24 @@
         if (this.currentUserId && (now - (this.lastPullFromCloud || 0)) >= 2 * 60 * 1000) {
           this.lastPullFromCloud = now;
           try {
-            const updated = await this.syncFromCloud();
-            if (updated) {
-              this.loadUserData();
-              this.renderStudents();
-              this.renderGroups();
-              this.renderDashboard();
-              this.renderHonor();
-              this.renderStore();
-              console.log('多端同步：已拉取云端最新数据并刷新界面');
+            // 先轻量检查云端时间戳，只有云端比本地新才完整拉取，节省 Supabase 额度
+            const cloudTs = await this.fetchCloudTimestampOnly(this.currentUserId);
+            const localData = getUserData();
+            const localTs = localData && localData.lastModified ? new Date(localData.lastModified).getTime() : 0;
+            const cloudTsMs = cloudTs ? new Date(cloudTs).getTime() : 0;
+            if (cloudTsMs <= localTs) {
+              console.log('云端数据不比本地新，跳过完整拉取（节省额度）');
+            } else {
+              const updated = await this.syncFromCloud();
+              if (updated) {
+                this.loadUserData();
+                this.renderStudents();
+                this.renderGroups();
+                this.renderDashboard();
+                this.renderHonor();
+                this.renderStore();
+                console.log('多端同步：云端有新数据，已拉取并刷新界面');
+              }
             }
           } catch (e) {
             console.warn('从云端拉取失败:', e);

@@ -2816,7 +2816,7 @@
       }
     },
 
-    // 是否允许用云端/备份数据覆盖本地（防止空云端覆盖本地有效数据）
+    // 是否允许用云端/备份数据覆盖本地（防止空云端覆盖本地有效数据，或用旧云端覆盖新本地数据）
     shouldOverwriteLocalWithCloud(localData, cloudData) {
       if (!cloudData || typeof cloudData !== 'object') return false;
       const localClasses = (localData && localData.classes) ? localData.classes : [];
@@ -2826,6 +2826,16 @@
       if (localHasData && !cloudHasData) {
         console.log('跳过用空云端数据覆盖本地数据，保留本地');
         return false;
+      }
+      // 时间戳保护：若本地数据比云端更新（说明本地有未同步的变更），不允许云端覆盖
+      if (localHasData && cloudHasData) {
+        const localTs = localData && localData.lastModified ? new Date(localData.lastModified).getTime() : 0;
+        const cloudTs = cloudData.lastModified ? new Date(cloudData.lastModified).getTime() : 0;
+        // 本地比云端新超过5秒（给网络延迟留余量），说明本地有未同步的操作，保留本地
+        if (localTs > cloudTs + 5000) {
+          console.log('本地数据比云端更新（本地:', new Date(localTs).toISOString(), '云端:', new Date(cloudTs).toISOString(), '），跳过云端覆盖，保留本地');
+          return false;
+        }
       }
       return true;
     },

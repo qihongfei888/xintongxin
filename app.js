@@ -1143,6 +1143,8 @@
               console.warn('登录后从云端拉取数据失败，继续使用本地数据:', e);
             }
           }
+          // 标记已完成云端同步尝试（无论成败），允许 saveUserDataInternal 在无班级时创建默认班级
+          this.cloudSyncAttempted = true;
           // 拉取后再刷新一次界面，确保显示最新数据
           this.loadUserData();
           
@@ -2468,11 +2470,48 @@
           this.currentClassId = data.classes[0].id;
         }
         
-        // 如果没有班级，说明是新设备尚未从云端拉取数据，不创建空默认班级
-        // 避免空班级被上传到云端覆盖有数据的云端记录
+        // 如果没有班级：
+        // - 若已完成云端同步尝试（cloudSyncAttempted=true），说明云端也没数据，创建默认班级供用户使用
+        // - 若尚未同步，跳过保存，等待云端数据拉取完成后再决定
         if (!this.currentClassId) {
-          console.log('saveUserDataInternal: 本地无班级数据，跳过保存（等待云端同步）');
-          return;
+          if (!this.cloudSyncAttempted) {
+            console.log('saveUserDataInternal: 本地无班级数据且未完成云端同步，跳过保存（等待云端同步）');
+            return;
+          }
+          // 云端同步后仍无班级，说明这是全新用户，创建默认班级
+          const newClass = {
+            id: 'class_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            name: className || '默认班级',
+            students: [],
+            groups: [],
+            groupPointHistory: [],
+            stagePoints: 20,
+            totalStages: 10,
+            plusItems: [
+              { name: '早读打卡', points: 1 },
+              { name: '课堂表现好', points: 2 },
+              { name: '作业完成', points: 1 },
+              { name: '考试优秀', points: 3 },
+              { name: '乐于助人', points: 2 },
+              { name: '进步明显', points: 2 }
+            ],
+            minusItems: [
+              { name: '迟到', points: -1 },
+              { name: '未完成作业', points: -2 },
+              { name: '课堂违纪', points: -2 }
+            ],
+            prizes: [],
+            lotteryPrizes: [],
+            broadcastMessages: ['欢迎来到童心宠伴！🎉'],
+            petCategoryPhotos: {}
+          };
+          data.classes.push(newClass);
+          this.currentClassId = newClass.id;
+          this.currentClassName = newClass.name;
+          this.students = [];
+          this.groups = [];
+          this.groupPointHistory = [];
+          console.log('saveUserDataInternal: 云端同步后仍无班级，已创建默认班级:', newClass.id);
         }
         
         // 更新班级数据
@@ -9766,6 +9805,7 @@
               console.warn('从备份键恢复失败:', e);
             }
           }
+          app.cloudSyncAttempted = true;
           app.showApp();
           app.enableRealtimeSync();
           app.enableAutoSync();

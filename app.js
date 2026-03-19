@@ -8423,6 +8423,68 @@
           alert('Excel文件中没有数据');
           return;
         }
+
+        // 导入前检查：若当前班级是默认班级或无班级，引导用户先命名班级
+        const userData = getUserData();
+        const currentClass = userData.classes && this.currentClassId
+          ? userData.classes.find(c => c.id === this.currentClassId)
+          : null;
+        const isDefaultClass = !currentClass || currentClass.name === '默认班级';
+        if (isDefaultClass) {
+          const newClassName = prompt(
+            '导入名单前，请先为班级命名（例如：三年2班）\n\n不命名将使用"默认班级"，建议填写实际班级名称：',
+            currentClass ? currentClass.name : ''
+          );
+          if (newClassName === null) {
+            // 用户点了取消，中止导入
+            return;
+          }
+          const trimmedName = newClassName.trim();
+          if (!trimmedName) {
+            alert('班级名称不能为空，请重新导入并填写班级名称');
+            return;
+          }
+          // 更新班级名称
+          if (currentClass) {
+            currentClass.name = trimmedName;
+            this.currentClassName = trimmedName;
+            setUserData(userData);
+          } else {
+            // 无班级，先创建一个
+            const newClass = {
+              id: 'class_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+              name: trimmedName,
+              students: [],
+              groups: [],
+              groupPointHistory: [],
+              stagePoints: 20,
+              totalStages: 10,
+              plusItems: [
+                { name: '早读打卡', points: 1 },
+                { name: '课堂表现好', points: 2 },
+                { name: '作业完成', points: 1 },
+                { name: '考试优秀', points: 3 },
+                { name: '乐于助人', points: 2 },
+                { name: '进步明显', points: 2 }
+              ],
+              minusItems: [
+                { name: '迟到', points: -1 },
+                { name: '未完成作业', points: -2 },
+                { name: '课堂违纪', points: -2 }
+              ],
+              prizes: [],
+              lotteryPrizes: [],
+              broadcastMessages: ['欢迎来到童心宠伴！🎉'],
+              petCategoryPhotos: {}
+            };
+            userData.classes.push(newClass);
+            userData.currentClassId = newClass.id;
+            this.currentClassId = newClass.id;
+            this.currentClassName = trimmedName;
+            setUserData(userData);
+          }
+          this.updateClassSelect();
+        }
         
         // 映射Excel列到学生数据
         const students = [];

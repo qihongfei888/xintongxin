@@ -1132,9 +1132,18 @@
             console.error('数据迁移失败:', e);
           }
           
-          // 登录成功后，仅使用本地数据初始化界面，不在登录流程中自动与云端互相覆盖，
-          // 避免误操作导致云端或本地数据被清空。
-          console.log('登录成功，使用本地数据初始化界面（登录阶段不自动与云端读写）');
+          // 登录成功后：优先从云端拉取最新数据（换设备场景），本地无数据则用云端恢复
+          console.log('登录成功，准备从云端拉取最新数据...');
+          this.loadUserData(); // 先用本地数据初始化（防止界面空白）
+          if (navigator.onLine) {
+            try {
+              // skipSessionCheck=true：登录场景，本地有完整数据时保留本地；本地为空时从云端恢复
+              await this.syncFromCloud(true);
+            } catch (e) {
+              console.warn('登录后从云端拉取数据失败，继续使用本地数据:', e);
+            }
+          }
+          // 拉取后再刷新一次界面，确保显示最新数据
           this.loadUserData();
           
           // 显示应用界面（init中会调用loadUserData加载最新数据）
@@ -2408,18 +2417,7 @@
               this.dataChanged = false;
               this.pendingChanges = 0;
               this.lastSyncTime = new Date().toISOString();
-              console.log('云端同步完成');
-              // 同步完成后，尝试从云端拉取最新数据，确保多端数据一致
-              try {
-                const pulled = await this.syncFromCloud();
-                if (pulled) {
-                console.log('从云端拉取最新数据完成');
-                } else {
-                  console.log('从云端未拉取到新数据，保持使用本地数据');
-                }
-              } catch (e) {
-                console.error('从云端拉取数据失败:', e);
-              }
+              console.log('云端同步完成（上传后不立即拉取，防止循环覆盖）');
               break;
             } catch (e) {
               retryCount++;
@@ -2470,40 +2468,11 @@
           this.currentClassId = data.classes[0].id;
         }
         
-        // 如果没有班级，创建一个默认班级
+        // 如果没有班级，说明是新设备尚未从云端拉取数据，不创建空默认班级
+        // 避免空班级被上传到云端覆盖有数据的云端记录
         if (!this.currentClassId) {
-          const newClass = {
-            id: 'class_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            name: className || '默认班级',
-            students: [],
-            groups: [],
-            groupPointHistory: [],
-            stagePoints: 20,
-            totalStages: 10,
-            plusItems: [
-              { name: '早读打卡', points: 1 },
-              { name: '课堂表现好', points: 2 },
-              { name: '作业完成', points: 1 },
-              { name: '考试优秀', points: 3 },
-              { name: '乐于助人', points: 2 },
-              { name: '进步明显', points: 2 }
-            ],
-            minusItems: [
-              { name: '迟到', points: -1 },
-              { name: '未完成作业', points: -2 },
-              { name: '课堂违纪', points: -2 }
-            ],
-            prizes: [],
-            lotteryPrizes: [],
-            broadcastMessages: ['欢迎来到童心宠伴！🎉'],
-            petCategoryPhotos: {}
-          };
-          data.classes.push(newClass);
-          this.currentClassId = newClass.id;
-          this.currentClassName = newClass.name;
-          this.students = [];
-          this.groups = [];
-          this.groupPointHistory = [];
+          console.log('saveUserDataInternal: 本地无班级数据，跳过保存（等待云端同步）');
+          return;
         }
         
         // 更新班级数据

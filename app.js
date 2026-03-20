@@ -2849,28 +2849,90 @@
       }
     },
 
+    // 数据完整性校验：检查数据是否有学生且结构完整
+    validateDataIntegrity(data) {
+      if (!data || typeof data !== 'object') return false;
+      if (!Array.isArray(data.classes)) return false;
+      
+      // 检查是否有班级有学生
+      const hasStudents = data.classes.some(c => 
+        Array.isArray(c.students) && c.students.length > 0
+      );
+      
+      if (!hasStudents) return false;
+      
+      // 检查学生数据结构是否完整
+      for (let cls of data.classes) {
+        if (!Array.isArray(cls.students)) continue;
+        for (let student of cls.students) {
+          if (!student.id || !student.name) {
+            console.warn('学生数据不完整:', student);
+            return false;
+          }
+        }
+      }
+      
+      return true;
+    },
+
     // 是否允许用云端/备份数据覆盖本地（防止空云端覆盖本地有效数据，或用旧云端覆盖新本地数据）
     shouldOverwriteLocalWithCloud(localData, cloudData) {
-      if (!cloudData || typeof cloudData !== 'object') return false;
+      if (!cloudData || typeof cloudData !== 'object') {
+        console.warn('云端数据无效，拒绝覆盖本地');
+        return false;
+      }
+      
+      // 校验云端数据完整性
+      if (!this.validateDataIntegrity(cloudData)) {
+        console.warn('⚠️ 云端数据不完整或无学生，拒绝覆盖本地');
+        return false;
+      }
+      
       const localClasses = (localData && localData.classes) ? localData.classes : [];
       const cloudClasses = (cloudData.classes && Array.isArray(cloudData.classes)) ? cloudData.classes : [];
       const localHasData = localClasses.some(c => Array.isArray(c.students) && c.students.length > 0);
       const cloudHasData = cloudClasses.some(c => Array.isArray(c.students) && c.students.length > 0);
+      
+      // 保护1：本地有数据但云端无数据，绝不覆盖
       if (localHasData && !cloudHasData) {
-        console.log('跳过用空云端数据覆盖本地数据，保留本地');
+        console.log('⚠️ 保护1：本地有数据但云端无数据，拒绝覆盖本地');
         return false;
       }
-      // 时间戳保护：若本地数据比云端更新（说明本地有未同步的变更），不允许云端覆盖
+      
+      // 保护2：本地无数据但云端有数据，允许覆盖（新设备恢复场景）
+      if (!localHasData && cloudHasData) {
+        console.log('✅ 保护2：本地无数据，云端有数据，允许恢复');
+        return true;
+      }
+      
+      // 保护3：本地和云端都有数据，比较时间戳
       if (localHasData && cloudHasData) {
         const localTs = localData && localData.lastModified ? new Date(localData.lastModified).getTime() : 0;
         const cloudTs = cloudData.lastModified ? new Date(cloudData.lastModified).getTime() : 0;
-        // 本地比云端新超过5秒（给网络延迟留余量），说明本地有未同步的操作，保留本地
+        
+        // 本地比云端新超过5秒，说明本地有未同步的操作，绝不覆盖
         if (localTs > cloudTs + 5000) {
-          console.log('本地数据比云端更新（本地:', new Date(localTs).toISOString(), '云端:', new Date(cloudTs).toISOString(), '），跳过云端覆盖，保留本地');
+          console.log('⚠️ 保护3：本地数据更新（本地:', new Date(localTs).toISOString(), '云端:', new Date(cloudTs).toISOString(), '），拒绝覆盖');
           return false;
         }
+        
+        // 保护4：云端数据比本地新，但检查学生数据是否一致（防止并发写入冲突）
+        if (cloudTs > localTs) {
+          // 比较学生数量，如果云端学生数少于本地，可能是并发冲突，保留本地
+          const localStudentCount = localClasses.reduce((sum, c) => sum + (c.students ? c.students.length : 0), 0);
+          const cloudStudentCount = cloudClasses.reduce((sum, c) => sum + (c.students ? c.students.length : 0), 0);
+          if (cloudStudentCount < localStudentCount) {
+            console.log('⚠️ 保护4：云端学生数(' + cloudStudentCount + ')少于本地(' + localStudentCount + ')，可能是并发冲突，保留本地');
+            return false;
+          }
+          console.log('✅ 保护3：云端数据更新，允许覆盖');
+          return true;
+        }
       }
-      return true;
+      
+      // 默认保留本地（安全第一）
+      console.log('✅ 默认保留本地数据');
+      return false;
     },
 
     // 从云存储同步。skipSessionCheck=true 表示本次是登录流程，不校验“其他设备登录”
@@ -9898,12 +9960,21 @@
               if (raw) {
                 const parsed = JSON.parse(raw);
                 if (parsed && parsed.data && parsed.data.classes && parsed.data.classes.length > 0) {
-                  setUserData(parsed.data);
-                  app.loadUserData();
-                  console.log('已从本地备份键恢复数据');
-          }
-        }
-      } catch (e) {
+                  const backupHasData = parsed.data.classes.some(c => c.students && c.students.length > 0);
+                  if (backupHasData) {
+                    setUserData(parsed.data);
+                    app.loadUserData();
+                    console.log('🔄 从本地备份键恢复数据成功，恢复班级数:', parsed.data.classes.length);
+                  } else {
+                    console.log('⚠️ 本地备份键无学生数据，跳过恢复');
+                  }
+                } else {
+                  console.log('⚠️ 本地备份键数据无效或为空');
+                }
+              } else {
+                console.log('⚠️ 本地备份键不存在');
+              }
+            } catch (e) {
               console.warn('从备份键恢复失败:', e);
             }
           }

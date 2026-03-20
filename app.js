@@ -2993,16 +2993,9 @@
           return false;
         }
         
-        // 保护4：云端数据比本地新，但检查学生数据是否一致（防止并发写入冲突）
+        // 保护4：云端时间戳比本地新，允许覆盖（时间戳是唯一权威）
         if (cloudTs > localTs) {
-          // 比较学生数量，如果云端学生数少于本地，可能是并发冲突，保留本地
-          const localStudentCount = localClasses.reduce((sum, c) => sum + (c.students ? c.students.length : 0), 0);
-          const cloudStudentCount = cloudClasses.reduce((sum, c) => sum + (c.students ? c.students.length : 0), 0);
-          if (cloudStudentCount < localStudentCount) {
-            console.log('⚠️ 保护4：云端学生数(' + cloudStudentCount + ')少于本地(' + localStudentCount + ')，可能是并发冲突，保留本地');
-            return false;
-          }
-          console.log('✅ 保护3：云端数据更新，允许覆盖');
+          console.log('✅ 保护4：云端数据更新，允许覆盖');
           return true;
         }
       }
@@ -3822,15 +3815,9 @@
       this.renderHonor();
       this.renderStore();
       
-      // 确保新创建的班级数据同步到云端
-      if (navigator.onLine) {
-        try {
-          console.log('同步新班级数据到云端...');
-          this.syncToCloud();
-        } catch (e) {
-          console.error('同步班级数据失败:', e);
-        }
-      }
+      // 新创建班级，标记数据变更，由主同步流程处理上传
+      this.dataChanged = true;
+      this.scheduleSync();
       
       alert('班级创建成功：' + className);
     },
@@ -6975,10 +6962,11 @@
           if (hasChanges) {
             this.saveData();
             console.log('数据自动同步到本地');
-            // 同时同步到云端
-            if (navigator.onLine) {
-              this.syncToCloud().catch(err => console.error('自动同步到云端失败:', err));
-              console.log('数据自动同步到云端');
+            // 标记数据变更，由主同步流程（enableAutoSync）统一处理上传
+            // 不在此处直接调用 syncToCloud，防止绕过 hasMeaningfulUserData 保护
+            if (window.app && window.app.dataChanged !== undefined) {
+              window.app.dataChanged = true;
+              console.log('数据变更已标记，等待主同步流程处理');
             }
           }
           

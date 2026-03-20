@@ -2786,6 +2786,13 @@
       try {
         let data = this.migrateUserData(userData || getUserData());
         if (!this.validateUserData(data)) return false;
+        
+        // 关键保护：本地数据为空时，绝不上传，防止覆盖云端有效数据
+        if (!hasMeaningfulUserData()) {
+          console.warn('⚠️ pushDataOnlyToCloud 保护：本地数据为空，拒绝上传，保留云端数据');
+          return false;
+        }
+        
         const compressed = this.compressUserData(data);
         const now = new Date().toISOString();
         compressed.lastModified = now;
@@ -2798,7 +2805,7 @@
           console.error('Supabase 保存数据失败:', error);
         return false;
         }
-        console.log('强制下线前已保存数据到 Supabase');
+        console.log('✅ 强制下线前已保存数据到 Supabase');
         return true;
       } catch (e) {
         console.warn('强制下线前保存到 Supabase 失败:', e);

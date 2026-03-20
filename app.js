@@ -2432,10 +2432,10 @@
         
         // 优化同步条件：确保多端数据同步
         // 同步频率：30秒一次，变更阈值：1次
-        // 确保跨设备数据一致性
+        // 只在数据有变更时才上传，防止无变更时覆盖云端
         const shouldSyncToCloud = 
           navigator.onLine && 
-          (this.dataChanged || timeSinceLastSync >= 30 * 1000); // 30秒同步一次，确保跨设备数据一致
+          this.dataChanged; // 只有数据有变更时才上传
         
         if (shouldSyncToCloud) {
           console.log('满足云端同步条件，开始同步...');

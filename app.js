@@ -2599,6 +2599,24 @@
           return false;
         }
         
+        // 2.5 上传前检查：本地数据是否比云端新
+        // 防止本地旧数据覆盖云端新数据
+        try {
+          const cloudLastModified = await this.fetchCloudTimestampOnly(this.currentUserId);
+          const localTs = userData && userData.lastModified ? new Date(userData.lastModified).getTime() : 0;
+          const cloudTs = cloudLastModified ? new Date(cloudLastModified).getTime() : 0;
+          
+          // 如果本地数据比云端旧超过5秒，说明云端有更新的数据，不上传本地旧数据
+          if (localTs < cloudTs - 5000) {
+            console.log('⚠️ 上传保护：本地数据比云端旧（本地:', new Date(localTs).toISOString(), '云端:', new Date(cloudTs).toISOString(), '），拒绝上传，保留云端新数据');
+            if (statusEl) statusEl.textContent = '云同步状态：本地数据较旧，已保留云端新数据';
+            this.syncing = false;
+            return false;
+          }
+        } catch (e) {
+          console.warn('检查云端时间戳失败，继续上传:', e);
+        }
+        
         // 3. 数据压缩（减少传输量）
         const compressedData = this.compressUserData(userData);
         
@@ -2606,8 +2624,11 @@
         console.log('同步时间:', now);
         console.log('数据大小:', JSON.stringify(compressedData).length, 'bytes');
         
-        // 4. 更新数据的最后修改时间
-        compressedData.lastModified = now;
+        // 4. 保留数据的原始修改时间（不覆盖为当前时间）
+        // 只有在本地有新操作时，lastModified 才会被 saveUserDataInternal 更新
+        if (!compressedData.lastModified) {
+          compressedData.lastModified = userData.lastModified || now;
+        }
         
         // 5. 本地备份（仅本账号）：保存完整数据，避免精简版导致本地“看起来丢数据”
         try {

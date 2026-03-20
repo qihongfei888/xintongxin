@@ -52,19 +52,34 @@
   // Supabase 客户端（唯一云同步后端）
   let supabaseClient = null;
   function ensureSupabaseClient() {
-    if (!navigator.onLine) return null;
+    if (!navigator.onLine) {
+      console.log('Supabase: 无网络连接');
+      return null;
+    }
     if (supabaseClient) return supabaseClient;
-    if (typeof window === 'undefined' ||
-        !window.supabase ||
-        !window.SUPABASE_URL ||
-        !window.SUPABASE_KEY ||
-        typeof window.supabase.createClient !== 'function') {
-      console.warn('Supabase 未配置或 SDK 未加载，当前仅使用本地/IndexedDB 存储');
+    if (typeof window === 'undefined') {
+      console.warn('Supabase: window未定义');
+      return null;
+    }
+    if (!window.supabase) {
+      console.warn('Supabase: SDK未加载（window.supabase不存在）');
+      return null;
+    }
+    if (!window.SUPABASE_URL) {
+      console.warn('Supabase: SUPABASE_URL未配置');
+      return null;
+    }
+    if (!window.SUPABASE_KEY) {
+      console.warn('Supabase: SUPABASE_KEY未配置');
+      return null;
+    }
+    if (typeof window.supabase.createClient !== 'function') {
+      console.warn('Supabase: createClient不是函数，SDK版本可能不兼容');
       return null;
     }
     try {
       supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY);
-      console.log('✅ 云同步: Supabase 客户端已初始化');
+      console.log('✅ 云同步: Supabase 客户端已初始化，URL:', window.SUPABASE_URL);
       return supabaseClient;
     } catch (e) {
       console.error('❌ 初始化 Supabase 客户端失败:', e);

@@ -2728,9 +2728,15 @@
       const client = ensureSupabaseClient();
       if (!client) return false;
       try {
+        // 确保 compressedData 内部有 lastModified（数据真实修改时间）
+        if (!compressedData.lastModified) {
+          compressedData.lastModified = now;
+        }
         const payload = {
           id: userIdStr,
           data: compressedData,
+          // 注意：updated_at 是 Supabase 行的更新时间，不代表数据修改时间
+          // 真实的数据修改时间在 compressedData.lastModified 内
           updated_at: now || new Date().toISOString()
         };
         const { error } = await client
@@ -2740,7 +2746,7 @@
           console.error('Supabase 上传用户数据失败:', error);
           return false;
         }
-        console.log('✅ 已通过 Supabase 上传用户数据');
+        console.log('✅ 已通过 Supabase 上传用户数据，数据修改时间:', compressedData.lastModified);
           return true;
       } catch (e) {
         console.warn('Supabase 上传失败:', e);
@@ -2776,18 +2782,20 @@
       }
     },
 
-    // 轻量检查：只查云端 updated_at，不拉完整 data，节省 Supabase 额度
+    // 轻量检查：只查云端数据的 lastModified 字段（不拉完整 data），节省 Supabase 额度
     async fetchCloudTimestampOnly(userIdStr) {
       const client = ensureSupabaseClient();
       if (!client || !userIdStr) return null;
       try {
+        // 使用 Supabase 的 JSON 查询，只拉取 data->lastModified 字段
         const { data, error } = await client
           .from('users')
-          .select('updated_at')
+          .select('data->lastModified')
           .eq('id', userIdStr)
           .limit(1);
         if (error || !data || data.length === 0) return null;
-        return data[0].updated_at;
+        // data[0]['data->lastModified'] 是数据的真实修改时间
+        return data[0]['data->lastModified'];
       } catch (e) {
         return null;
       }
@@ -2924,7 +2932,10 @@
           }
           let cloudData = row.data;
           const cloudLicenses = row.licenses;
-          const cloudTimestamp = String(row.updatedAt || '1970-01-01T00:00:00.000Z');
+          // 重要：使用 cloudData.lastModified（数据真实修改时间）而不是 Supabase 的 updated_at（行更新时间）
+          const cloudTimestamp = (cloudData && cloudData.lastModified) 
+            ? String(cloudData.lastModified) 
+            : String(row.updatedAt || '1970-01-01T00:00:00.000Z');
           if (cloudData) {
             if (!skipSessionCheck && statusEl) statusEl.textContent = '云同步状态：已从 Supabase 收到数据，正在解析…';
             if (typeof cloudData === 'string') {
@@ -3325,13 +3336,13 @@
         if (this.currentUserId && (now - (this.lastPullFromCloud || 0)) >= 2 * 60 * 1000) {
           this.lastPullFromCloud = now;
           try {
-            // 先轻量检查云端时间戳，只有云端比本地新才完整拉取，节省 Supabase 额度
-            const cloudTs = await this.fetchCloudTimestampOnly(this.currentUserId);
+            // 先轻量检查云端数据的真实修改时间（data.lastModified），只有云端比本地新才完整拉取
+            const cloudLastModified = await this.fetchCloudTimestampOnly(this.currentUserId);
             const localData = getUserData();
             const localTs = localData && localData.lastModified ? new Date(localData.lastModified).getTime() : 0;
-            const cloudTsMs = cloudTs ? new Date(cloudTs).getTime() : 0;
-            if (cloudTsMs <= localTs) {
-              console.log('云端数据不比本地新，跳过完整拉取（节省额度）');
+            const cloudTs = cloudLastModified ? new Date(cloudLastModified).getTime() : 0;
+            if (cloudTs <= localTs) {
+              console.log('云端数据不比本地新（云端:', new Date(cloudTs).toISOString(), '本地:', new Date(localTs).toISOString(), '），跳过完整拉取（节省额度）');
             } else {
               const updated = await this.syncFromCloud();
               if (updated) {

@@ -2633,17 +2633,20 @@
         }
         
         // 2.5 上传前检查：本地数据是否比云端新
-        // 防止本地旧数据覆盖云端新数据
+        // 如果云端比本地新，先从云端拉取，合并后再上传
         try {
           const cloudLastModified = await this.fetchCloudTimestampOnly(this.currentUserId);
           const localTs = userData && userData.lastModified ? new Date(userData.lastModified).getTime() : 0;
           const cloudTs = cloudLastModified ? new Date(cloudLastModified).getTime() : 0;
           
-          // 如果本地数据比云端旧超过5秒，说明云端有更新的数据，不上传本地旧数据
-          if (localTs < cloudTs - 5000) {
-            console.log('⚠️ 上传保护：本地数据比云端旧（本地:', new Date(localTs).toISOString(), '云端:', new Date(cloudTs).toISOString(), '），拒绝上传，保留云端新数据');
-            if (statusEl) statusEl.textContent = '云同步状态：本地数据较旧，已保留云端新数据';
+          // 如果本地数据比云端旧超过30秒，先提示用户拉取云端，但不阻止上传
+          // （不直接拒绝，避免新设备因为时间戳0而永远无法上传）
+          if (localTs < cloudTs - 30000) {
+            console.warn('⚠️ 上传提醒：本地数据比云端旧（本地:', new Date(localTs).toISOString(), '云端:', new Date(cloudTs).toISOString(), '），建议先从云端同步');
+            if (statusEl) statusEl.textContent = '云同步状态：检测到云端有更新数据，请先点「从云端恢复」再上传';
             this.syncing = false;
+            if (btnUpload) btnUpload.disabled = false;
+            if (btnDownload) btnDownload.disabled = false;
             return false;
           }
         } catch (e) {
@@ -2937,9 +2940,22 @@
     },
 
     // 是否允许用云端/备份数据覆盖本地（防止空云端覆盖本地有效数据，或用旧云端覆盖新本地数据）
-    shouldOverwriteLocalWithCloud(localData, cloudData) {
+    // forceOverwrite=true 时跳过时间戳保护，用于手动点击「从云端恢复」
+    shouldOverwriteLocalWithCloud(localData, cloudData, forceOverwrite) {
       if (!cloudData || typeof cloudData !== 'object') {
         console.warn('云端数据无效，拒绝覆盖本地');
+        return false;
+      }
+      
+      // 手动强制恢复模式：只要云端有数据就覆盖
+      if (forceOverwrite) {
+        const cloudClasses = (cloudData.classes && Array.isArray(cloudData.classes)) ? cloudData.classes : [];
+        const cloudHasData = cloudClasses.some(c => Array.isArray(c.students) && c.students.length > 0);
+        if (cloudHasData) {
+          console.log('✅ 强制恢复模式：云端有数据，允许覆盖本地');
+          return true;
+        }
+        console.warn('⚠️ 强制恢复模式：云端无学生数据，拒绝覆盖');
         return false;
       }
       
@@ -2997,7 +3013,7 @@
     },
 
     // 从云存储同步。skipSessionCheck=true 表示本次是登录流程，不校验“其他设备登录”
-    async syncFromCloud(skipSessionCheck) {
+    async syncFromCloud(skipSessionCheck, forceOverwrite) {
       const statusEl = document.getElementById('cloudSyncStatus');
       const btnUpload = document.getElementById('btnSyncToCloud');
       const btnDownload = document.getElementById('btnSyncFromCloud');
@@ -3007,17 +3023,10 @@
         return false;
       }
       
-      // 登录场景优先保护本地完整数据：
-      // 只有当本地“确实有学生数据”时，才认为本地是权威源并跳过云端覆盖。
-      // 避免新设备自动生成空班级后，被误判为“本地有数据”，从而导致“云端恢复成功但没数据”。
-      try {
-        const localHasMeaningful = hasMeaningfulUserData();
-        if (skipSessionCheck && localHasMeaningful) {
-          console.log('登录场景下本地已有数据，跳过从云端覆盖本地，后续将以本地为准同步到云端');
-          return false;
-        }
-      } catch (e) {
-        console.warn('检查本地数据是否存在时出错，继续执行云端同步:', e);
+      // 登录场景：始终从云端拉取，由 shouldOverwriteLocalWithCloud 根据时间戳决定是否覆盖本地
+      // 不能因为本地有数据就跳过拉取，否则新设备会显示旧数据且手动同步无效
+      if (skipSessionCheck) {
+        console.log('登录场景：从云端拉取数据，由时间戳决定是否覆盖本地');
       }
       if (this.syncing) {
         console.log('正在同步中，跳过重复同步');
@@ -3076,7 +3085,7 @@
                   } catch (e) {}
                 }
                 const localData = getUserData();
-                if (this.shouldOverwriteLocalWithCloud(localData, updatedData)) {
+                if (this.shouldOverwriteLocalWithCloud(localData, updatedData, forceOverwrite)) {
                   if (!skipSessionCheck && statusEl) statusEl.textContent = '云同步状态：正在写入本地存储…';
                   setUserData(updatedData);
                   syncSuccess = true;
@@ -3205,7 +3214,7 @@
                 }
                 
                 // 仅当云端数据有效且允许覆盖时才保存（防止空云端覆盖本地）
-                if (this.shouldOverwriteLocalWithCloud(localData, updatedData)) {
+                if (this.shouldOverwriteLocalWithCloud(localData, updatedData, forceOverwrite)) {
                   setUserData(updatedData);
                   try {
                     const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
@@ -3273,7 +3282,7 @@
                           } catch (e) {}
                         }
                         const localData = getUserData();
-                        if (this.shouldOverwriteLocalWithCloud(localData, updatedData)) {
+                        if (this.shouldOverwriteLocalWithCloud(localData, updatedData, forceOverwrite)) {
                           setUserData(updatedData);
                           syncSuccess = true;
                           console.log('Bmob 415 降级：已用云端数据更新本地');

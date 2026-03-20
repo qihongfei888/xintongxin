@@ -1145,6 +1145,9 @@
           }
           // 标记已完成云端同步尝试（无论成败），允许 saveUserDataInternal 在无班级时创建默认班级
           this.cloudSyncAttempted = true;
+          // 重置数据变更标志，防止登录流程中的操作被误认为是新变更
+          this.dataChanged = false;
+          this.pendingChanges = 0;
           // 拉取后再刷新一次界面，确保显示最新数据
           this.loadUserData();
           
@@ -3404,20 +3407,23 @@
         this.autoSyncInterval = null;
       }
       
-      this.autoSyncInterval = setInterval(async () => {
-        const now = Date.now();
-        // 仅在数据有变更时保存，避免无变化时频繁触发同步
-        if (this.dataChanged) {
-          this.saveUserData();
-        }
+      // 重要：延迟启动自动同步，避免登录流程中的 syncFromCloud 还未完成就触发上传
+      // 给登录流程留出充足时间（5秒）完成云端拉取和本地加载
+      setTimeout(() => {
+        this.autoSyncInterval = setInterval(async () => {
+          const now = Date.now();
+          // 仅在数据有变更时保存，避免无变化时频繁触发同步
+          if (this.dataChanged) {
+            this.saveUserData();
+          }
 
-        if (!navigator.onLine) {
-          console.log('无网络连接，仅保存本地');
-          return;
-        }
+          if (!navigator.onLine) {
+            console.log('无网络连接，仅保存本地');
+            return;
+          }
 
-        if (this.currentUserId && (now - (this.lastPullFromCloud || 0)) >= 2 * 60 * 1000) {
-          this.lastPullFromCloud = now;
+          if (this.currentUserId && (now - (this.lastPullFromCloud || 0)) >= 2 * 60 * 1000) {
+            this.lastPullFromCloud = now;
           try {
             // 先轻量检查云端数据的真实修改时间（data.lastModified），只有云端比本地新才完整拉取
             const cloudLastModified = await this.fetchCloudTimestampOnly(this.currentUserId);
@@ -3467,7 +3473,9 @@
             }
           }
         }
-      }, 2 * 60 * 1000); // 每2分钟检查一次，平衡跨端同步及时性与Supabase免费额度
+        }, 2 * 60 * 1000); // 每2分钟检查一次，平衡跨端同步及时性与Supabase免费额度
+        console.log('自动同步已启用（延迟5秒启动，避免登录流程冲突）');
+      }, 5000); // 延迟5秒启动，确保登录流程完全完成
     },
     
     // 禁用自动同步

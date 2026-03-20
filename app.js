@@ -1056,6 +1056,21 @@
           } catch (e) {
             console.error('从 Supabase 查询账号时出错:', e);
           }
+        } else if (user && navigator.onLine) {
+          // 本地已存在用户，检查 Supabase 中的用户ID是否一致
+          try {
+            console.log('本地已找到账号，检查 Supabase 用户ID一致性...');
+            const account = await supabaseFetchAccount(username, password);
+            if (account && account.user_id && account.user_id !== user.id) {
+              console.log('发现用户ID不一致，更新本地用户ID:', account.user_id);
+              // 更新本地用户ID
+              user.id = account.user_id;
+              setUserList(users);
+              console.log('本地用户ID已更新为:', account.user_id);
+            }
+          } catch (e) {
+            console.warn('检查 Supabase 用户ID一致性失败，继续登录:', e);
+          }
         }
         if (user) {
           // 记录成功登录
@@ -1228,8 +1243,23 @@
           return false; // 用户名已存在
         }
         
+        // 检查 Supabase 是否已存在该用户，确保用户ID一致性
+        let existingUserId = null;
+        if (navigator.onLine) {
+          try {
+            console.log('检查 Supabase 是否已存在该用户...');
+            const account = await supabaseFetchAccount(username, password);
+            if (account && account.user_id) {
+              existingUserId = account.user_id;
+              console.log('发现已有用户ID:', existingUserId);
+            }
+          } catch (e) {
+            console.warn('检查 Supabase 用户失败，继续注册:', e);
+          }
+        }
+        
         const newUser = {
-          id: 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+          id: existingUserId || 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
           username: username,
           password: password,
           createdAt: new Date().toISOString(),

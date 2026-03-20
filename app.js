@@ -2629,6 +2629,9 @@
         if (!this.validateUserData(userData)) {
           console.error('数据验证失败，跳过同步');
           if (statusEl) statusEl.textContent = '云同步状态：数据格式不合法，未上传';
+          this.syncing = false;
+          if (btnUpload) btnUpload.disabled = false;
+          if (btnDownload) btnDownload.disabled = false;
           return false;
         }
         

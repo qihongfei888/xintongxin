@@ -1230,11 +1230,31 @@
           e.preventDefault();
           console.log('登录表单提交');
           
+          const submitBtn = loginForm.querySelector('button[type="submit"]');
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = '登录中...';
+          }
+
           const username = document.getElementById('loginUsername').value.trim();
           const password = document.getElementById('loginPassword').value.trim();
           
-          if (!username) { alert('请输入用户名'); return; }
-          if (!password) { alert('请输入密码'); return; }
+          if (!username) {
+            alert('请输入用户名');
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = '登录';
+            }
+            return;
+          }
+          if (!password) {
+            alert('请输入密码');
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = '登录';
+            }
+            return;
+          }
           
           console.log('登录尝试:', username);
           
@@ -1247,16 +1267,26 @@
               } else {
                 console.log('登录失败');
                 alert('登录失败，请检查用户名和密码');
+                if (submitBtn) {
+                  submitBtn.disabled = false;
+                  submitBtn.textContent = '登录';
+                }
               }
             }).catch(error => {
               console.error('登录错误:', error);
               alert('登录失败: ' + error.message);
+              if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '登录';
+              }
             });
           } else {
             console.log('app对象或login方法未加载');
-            // 模拟登录成功
-            alert('登录成功！用户名: ' + username);
-            console.log('登录成功');
+            alert('登录模块未加载，请刷新页面后重试');
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = '登录';
+            }
           }
         });
       } else {

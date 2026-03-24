@@ -9826,9 +9826,10 @@
         };
         
         this.groupPointHistory.push(record);
-        
-        setStorage(STORAGE_KEYS.groups, this.groups);
-        setStorage(STORAGE_KEYS.groupPointHistory, this.groupPointHistory);
+
+        // 统一走班级数据持久化，确保小组加/减分刷新后不丢失
+        // 同时触发自动同步标记，避免“本地改了但云端未及时更新”
+        this.saveStudents();
         
         this.closeModal('groupPointModal');
         this.renderGroups();

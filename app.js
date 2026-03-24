@@ -1180,7 +1180,17 @@
           this.pendingChanges = 0;
           // 拉取后再刷新一次界面，确保显示最新数据
           this.loadUserData();
-          
+
+          // 立即把新 sessionId 上传云端，防止定时同步时因 session 不一致被误判为其他设备登录而强制退出
+          if (navigator.onLine) {
+            try {
+              await this.syncToCloud();
+              console.log('登录后已上传新 sessionId 到云端');
+            } catch (e) {
+              console.warn('登录后上传 sessionId 失败（不影响登录）:', e);
+            }
+          }
+
           // 显示应用界面（init中会调用loadUserData加载最新数据）
           this.showApp();
           

@@ -9016,6 +9016,7 @@
               授权码: ${user.licenseKey ? user.licenseKey.substring(0, 10) + '...' : '无'}
             </div>
             <div class="admin-user-actions">
+              <button class="btn btn-secondary btn-small" onclick="app.resetUserPassword('${user.id}')">重置密码</button>
               <button class="btn btn-danger btn-small" onclick="app.deleteUser('${user.id}')">删除用户</button>
               <button class="btn btn-secondary btn-small" onclick="app.resetUserDevices('${user.id}')">重置设备</button>
             </div>
@@ -9026,6 +9027,52 @@
       }
     },
     
+    // 重置用户密码（保留账号ID与历史数据）
+    async resetUserPassword(userId) {
+      try {
+        const users = getUserList();
+        const user = users.find(u => u.id === userId);
+        if (!user) {
+          alert('未找到该用户');
+          return;
+        }
+
+        const newPassword = prompt(`请输入用户「${user.username}」的新密码：`);
+        if (newPassword === null) return;
+        const pwd = String(newPassword).trim();
+        if (!pwd) {
+          alert('密码不能为空');
+          return;
+        }
+        if (pwd.length < 6) {
+          alert('密码至少6位');
+          return;
+        }
+
+        user.password = pwd;
+        setUserList(users);
+
+        // 同步到 Supabase accounts，确保跨设备可用
+        if (navigator.onLine) {
+          try {
+            const ok = await supabaseUpsertAccount(user.username, user.password, user.id);
+            if (!ok) {
+              alert('本地密码已重置，但云端账号同步失败，请稍后点一次“上传到云端”');
+            }
+          } catch (e) {
+            console.warn('重置密码后同步 Supabase 失败:', e);
+            alert('本地密码已重置，但云端账号同步失败，请稍后点一次“上传到云端”');
+          }
+        }
+
+        this.renderAdminUsersList();
+        alert(`用户「${user.username}」密码已重置成功`);
+      } catch (error) {
+        console.error('重置用户密码失败:', error);
+        alert('重置密码失败：' + (error.message || error));
+      }
+    },
+
     // 删除用户
     deleteUser(userId) {
       if (!confirm('确定要删除此用户吗？此操作不可恢复！')) {

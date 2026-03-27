@@ -3051,6 +3051,9 @@
       }
       if (this.syncing) {
         console.log('正在同步中，跳过重复同步');
+        if (!skipSessionCheck && statusEl) {
+          statusEl.textContent = '云同步状态：正在进行中，请稍候再试';
+        }
         return false;
       }
       
@@ -3060,6 +3063,9 @@
       if (!skipSessionCheck && btnDownload) btnDownload.disabled = true;
       let syncSuccess = false;
       const userIdStr = this.currentUserId ? String(this.currentUserId).trim() : '';
+      // 手动点「从云端恢复」时，强制允许云端覆盖本地，避免“点击没反应”
+      // 登录流程调用 syncFromCloud(true) 时只传第一个参数，不受此处影响
+      const forceOverwriteByManual = (forceOverwrite === true) || (skipSessionCheck === false);
         console.log('开始从Bmob同步数据，用户ID:', userIdStr || '(无)');
 
       try {
@@ -3106,7 +3112,7 @@
                   } catch (e) {}
                 }
                 const localData = getUserData();
-                if (this.shouldOverwriteLocalWithCloud(localData, updatedData, forceOverwrite)) {
+                if (this.shouldOverwriteLocalWithCloud(localData, updatedData, forceOverwriteByManual)) {
                   if (!skipSessionCheck && statusEl) statusEl.textContent = '云同步状态：正在写入本地存储…';
                   setUserData(updatedData);
                   syncSuccess = true;
@@ -3235,7 +3241,7 @@
                 }
                 
                 // 仅当云端数据有效且允许覆盖时才保存（防止空云端覆盖本地）
-                if (this.shouldOverwriteLocalWithCloud(localData, updatedData, forceOverwrite)) {
+                if (this.shouldOverwriteLocalWithCloud(localData, updatedData, forceOverwriteByManual)) {
                   setUserData(updatedData);
                   try {
                     const backupKey = this.currentUserId ? `class_pet_local_${this.currentUserId}` : 'class_pet_local_default';
@@ -3303,7 +3309,7 @@
                           } catch (e) {}
                         }
                         const localData = getUserData();
-                        if (this.shouldOverwriteLocalWithCloud(localData, updatedData, forceOverwrite)) {
+                        if (this.shouldOverwriteLocalWithCloud(localData, updatedData, forceOverwriteByManual)) {
                           setUserData(updatedData);
                           syncSuccess = true;
                           console.log('Bmob 415 降级：已用云端数据更新本地');

@@ -9591,7 +9591,7 @@
       };
       
       this.groups.push(newGroup);
-      setStorage(STORAGE_KEYS.groups, this.groups);
+      this.saveStudents();
       
       this.closeModal('addGroupModal');
       this.renderGroups();
@@ -9625,7 +9625,7 @@
       const group = this.groups.find(g => g.id === groupId);
       if (group) {
         group.name = name;
-        setStorage(STORAGE_KEYS.groups, this.groups);
+        this.saveStudents();
         
         this.closeModal('editGroupModal');
         this.renderGroups();
@@ -9639,7 +9639,7 @@
       }
       
       this.groups = this.groups.filter(g => g.id !== groupId);
-      setStorage(STORAGE_KEYS.groups, this.groups);
+      this.saveStudents();
       
       this.renderGroups();
       this.renderUngroupedStudents();
@@ -9727,7 +9727,7 @@
       const group = this.groups.find(g => g.id === groupId);
       if (group && group.members) {
         group.members = group.members.filter(m => m.studentId !== studentId);
-        setStorage(STORAGE_KEYS.groups, this.groups);
+        this.saveStudents();
         
         this.renderGroupMembers(groupId);
         this.renderGroups();
@@ -9743,7 +9743,7 @@
         const member = group.members.find(m => m.studentId === studentId);
         if (member) {
           member.isLeader = true;
-          setStorage(STORAGE_KEYS.groups, this.groups);
+          this.saveStudents();
           
           this.renderGroupMembers(groupId);
           this.renderGroups();
@@ -9789,7 +9789,7 @@
           joinedAt: new Date().toISOString()
         });
         
-        setStorage(STORAGE_KEYS.groups, this.groups);
+        this.saveStudents();
         
         this.closeModal('addStudentToGroupModal');
         this.renderGroups();
@@ -9859,7 +9859,7 @@
         this.groups.push(newGroup);
       }
       
-      setStorage(STORAGE_KEYS.groups, this.groups);
+      this.saveStudents();
       
       this.closeModal('randomGroupModal');
       this.renderGroups();

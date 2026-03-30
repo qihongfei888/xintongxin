@@ -1182,10 +1182,12 @@
           this.loadUserData();
 
           // 立即把新 sessionId 上传云端，防止定时同步时因 session 不一致被误判为其他设备登录而强制退出
+          // 注意：只更新 sessionId 字段，不改动云端 data/lastModified，避免覆盖手机端刚上传的最新数据
           if (navigator.onLine) {
             try {
-              await this.syncToCloud();
-              console.log('登录后已上传新 sessionId 到云端');
+              const mySession = localStorage.getItem(SESSION_ID_KEY);
+              await this.pushSessionIdOnly(String(user.id), mySession);
+              console.log('登录后已上传新 sessionId 到云端（不影响数据）');
             } catch (e) {
               console.warn('登录后上传 sessionId 失败（不影响登录）:', e);
             }
@@ -2840,6 +2842,48 @@
     },
 
     // 仅更新云端 data 字段（不更新 sessionId），用于强制下线前保存本端数据
+    // 仅更新云端 sessionId 字段，不改动 data/lastModified，登录后用此方法占用"当前端"
+    async pushSessionIdOnly(userIdStr, sessionId) {
+      if (!navigator.onLine || !userIdStr || !sessionId) return false;
+      const client = ensureSupabaseClient();
+      if (!client) return false;
+      try {
+        const { error } = await client
+          .from('users')
+          .update({ session_id: sessionId })
+          .eq('id', userIdStr);
+        if (error) {
+          // session_id 列不存在时降级：把 sessionId 合并进 data 对象
+          console.warn('pushSessionIdOnly update 失败，尝试降级方式:', error.message);
+          const { data: rows, error: fetchErr } = await client
+            .from('users')
+            .select('data')
+            .eq('id', userIdStr)
+            .limit(1);
+          if (!fetchErr && rows && rows.length > 0) {
+            const cloudData = (typeof rows[0].data === 'string') ? JSON.parse(rows[0].data) : rows[0].data;
+            if (cloudData && typeof cloudData === 'object') {
+              cloudData._sessionId = sessionId;
+              const { error: writeErr } = await client
+                .from('users')
+                .update({ data: cloudData })
+                .eq('id', userIdStr);
+              if (!writeErr) {
+                console.log('✅ sessionId 已通过降级方式写入云端 data._sessionId');
+                return true;
+              }
+            }
+          }
+          return false;
+        }
+        console.log('✅ sessionId 已写入云端（不影响用户数据）');
+        return true;
+      } catch (e) {
+        console.warn('pushSessionIdOnly 失败:', e);
+        return false;
+      }
+    },
+
     async pushDataOnlyToCloud(objectId, userData) {
       if (!navigator.onLine) return false;
       const client = ensureSupabaseClient();

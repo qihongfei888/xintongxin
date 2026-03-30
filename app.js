@@ -2669,9 +2669,8 @@
           const localTs = userData && userData.lastModified ? new Date(userData.lastModified).getTime() : 0;
           const cloudTs = cloudLastModified ? new Date(cloudLastModified).getTime() : 0;
           
-          // 如果本地数据比云端旧超过30秒，先提示用户拉取云端，但不阻止上传
-          // （不直接拒绝，避免新设备因为时间戳0而永远无法上传）
-          if (localTs < cloudTs - 30000) {
+          // cloudTs=0 说明云端没有数据或取不到时间戳，不拦截（允许上传）
+          if (cloudTs > 0 && localTs < cloudTs - 30000) {
             console.warn('⚠️ 上传提醒：本地数据比云端旧（本地:', new Date(localTs).toISOString(), '云端:', new Date(cloudTs).toISOString(), '），建议先从云端同步');
             if (statusEl) statusEl.textContent = '云同步状态：检测到云端有更新数据，请先点「从云端恢复」再上传';
             this.syncing = false;
@@ -2853,27 +2852,8 @@
           .update({ session_id: sessionId })
           .eq('id', userIdStr);
         if (error) {
-          // session_id 列不存在时降级：把 sessionId 合并进 data 对象
-          console.warn('pushSessionIdOnly update 失败，尝试降级方式:', error.message);
-          const { data: rows, error: fetchErr } = await client
-            .from('users')
-            .select('data')
-            .eq('id', userIdStr)
-            .limit(1);
-          if (!fetchErr && rows && rows.length > 0) {
-            const cloudData = (typeof rows[0].data === 'string') ? JSON.parse(rows[0].data) : rows[0].data;
-            if (cloudData && typeof cloudData === 'object') {
-              cloudData._sessionId = sessionId;
-              const { error: writeErr } = await client
-                .from('users')
-                .update({ data: cloudData })
-                .eq('id', userIdStr);
-              if (!writeErr) {
-                console.log('✅ sessionId 已通过降级方式写入云端 data._sessionId');
-                return true;
-              }
-            }
-          }
+          // session_id 列不存在时，跳过降级写入，避免触发 updated_at 更新影响时间戳比较
+          console.warn('pushSessionIdOnly: session_id 列不存在或更新失败，跳过（不影响数据）:', error.message);
           return false;
         }
         console.log('✅ sessionId 已写入云端（不影响用户数据）');
@@ -2923,15 +2903,17 @@
       const client = ensureSupabaseClient();
       if (!client || !userIdStr) return null;
       try {
-        // 使用 Supabase 的 JSON 查询，只拉取 data->lastModified 字段
+        // 直接拉取整个 data 字段，从中取 lastModified（避免 PostgREST JSON 路径语法差异）
         const { data, error } = await client
           .from('users')
-          .select('data->lastModified')
+          .select('data')
           .eq('id', userIdStr)
           .limit(1);
         if (error || !data || data.length === 0) return null;
-        // data[0]['data->lastModified'] 是数据的真实修改时间
-        return data[0]['data->lastModified'];
+        const row = data[0];
+        const rowData = (typeof row.data === 'string') ? JSON.parse(row.data) : row.data;
+        if (rowData && rowData.lastModified) return rowData.lastModified;
+        return null;
       } catch (e) {
         return null;
       }

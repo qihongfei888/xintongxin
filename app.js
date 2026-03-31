@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   console.log('🚀 应用启动中...');
 
   // 检查存储空间
@@ -1742,14 +1742,12 @@
             
             // 确保学生有宠物数据
             if (!student.pet) {
-              student.pet = {
-                type: 'cat',
-                name: '默认宠物',
-                level: 1,
-                exp: 0,
-                hunger: 100,
-                happiness: 100
-              };
+              // 没有宠物，保持 null，让前端引导用户领养
+              student.pet = null;
+            } else if (!student.pet.isCustom && !student.pet.typeId) {
+              // 宠物数据存在但是旧格式（缺少 typeId/breedId），保留原样不强制清空
+              // 只记录警告，避免用户数据丢失
+              console.warn('学生', student.name, '宠物数据为旧格式，typeId 缺失，当前 pet:', JSON.stringify(student.pet));
             }
           }
         }
@@ -5019,6 +5017,12 @@
       // 1) 自定义宠物：isCustom = true
       // 2) 预置宠物：同时存在 typeId 和 breedId
       const hasStructuredPet = !!(s.pet && (s.pet.isCustom || (s.pet.typeId && s.pet.breedId)));
+      // 检测旧格式宠物（有 type 但没有 typeId），自动清空引导重新领养
+      if (s.pet && !hasStructuredPet && !s.pet.isCustom && s.pet.type && !s.pet.typeId) {
+        console.warn('检测到旧格式宠物，自动清空:', s.name);
+        s.pet = null;
+        this.saveStudents();
+      }
 
       if (hasStructuredPet) {
         if (s.pet.hatching) {

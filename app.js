@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   console.log('🚀 应用启动中...');
 
   // 检查存储空间
@@ -2990,6 +2990,32 @@
           }
         }
       }
+
+      // 结构健康度检查：至少大部分学生保留 points/pet 字段，避免“只剩名单”被当成有效数据
+      const allStudents = [];
+      data.classes.forEach(cls => {
+        (Array.isArray(cls.students) ? cls.students : []).forEach(stu => allStudents.push(stu));
+      });
+      if (allStudents.length > 0) {
+        let pointsFieldCount = 0;
+        let petFieldCount = 0;
+        allStudents.forEach(stu => {
+          if (stu && Object.prototype.hasOwnProperty.call(stu, 'points')) pointsFieldCount++;
+          if (stu && Object.prototype.hasOwnProperty.call(stu, 'pet')) petFieldCount++;
+        });
+        const pointsRatio = pointsFieldCount / allStudents.length;
+        const petRatio = petFieldCount / allStudents.length;
+        if (pointsRatio < 0.6 || petRatio < 0.6) {
+          console.warn('学生结构健康度过低，疑似云端异常裁剪数据，拒绝使用该数据', {
+            total: allStudents.length,
+            pointsFieldCount,
+            petFieldCount,
+            pointsRatio,
+            petRatio
+          });
+          return false;
+        }
+      }
       
       return true;
     },
@@ -3024,6 +3050,29 @@
       const cloudClasses = (cloudData.classes && Array.isArray(cloudData.classes)) ? cloudData.classes : [];
       const localHasData = localClasses.some(c => Array.isArray(c.students) && c.students.length > 0);
       const cloudHasData = cloudClasses.some(c => Array.isArray(c.students) && c.students.length > 0);
+
+      // 额外保护：防止“云端只剩学生名单”覆盖本地完整数据
+      const countStudentFields = (classes) => {
+        const stats = { total: 0, hasPointsField: 0, hasPetField: 0 };
+        classes.forEach(cls => {
+          (Array.isArray(cls.students) ? cls.students : []).forEach(stu => {
+            stats.total += 1;
+            if (stu && Object.prototype.hasOwnProperty.call(stu, 'points')) stats.hasPointsField += 1;
+            if (stu && Object.prototype.hasOwnProperty.call(stu, 'pet')) stats.hasPetField += 1;
+          });
+        });
+        return stats;
+      };
+      const localStats = countStudentFields(localClasses);
+      const cloudStats = countStudentFields(cloudClasses);
+      if (localHasData && cloudHasData && localStats.total > 0 && cloudStats.total > 0) {
+        const pointsFieldDrop = cloudStats.hasPointsField < Math.floor(localStats.hasPointsField * 0.6);
+        const petFieldDrop = cloudStats.hasPetField < Math.floor(localStats.hasPetField * 0.6);
+        if (pointsFieldDrop || petFieldDrop) {
+          console.warn('⚠️ 结构保护：检测到云端学生字段明显缺失（可能仅剩名单），拒绝覆盖本地', { localStats, cloudStats });
+          return false;
+        }
+      }
       
       // 保护1：本地有数据但云端无数据，绝不覆盖
       if (localHasData && !cloudHasData) {

@@ -1825,6 +1825,9 @@
             lotteryPrizes: cls.lotteryPrizes,
             broadcastMessages: cls.broadcastMessages,
             petCategoryPhotos: cls.petCategoryPhotos,
+            // 小组数据：必须保留，否则上传后小组消失
+            groups: cls.groups || [],
+            groupPointHistory: cls.groupPointHistory || [],
             // 排座位：按班级保存
             seatingPlan: cls.seatingPlan,
             // 出勤记录：按班级保存
@@ -1841,8 +1844,8 @@
                 points: stu.points || 0,
                 badgesSpent: stu.badgesSpent || 0,
                 badgesEarned: stu.badgesEarned || 0,
-                // 宠物当前状态及已养成记录、装扮
-                pet: stu.pet || null,
+                // 宠物当前状态及已养成记录、装扮（完整保留，防止上传后宠物消失）
+                pet: stu.pet !== undefined ? stu.pet : null,
                 completedPets: stu.completedPets || [],
                 accessories: stu.accessories || [],
                 // 基本展示信息

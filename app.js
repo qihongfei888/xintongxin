@@ -2682,6 +2682,36 @@
         } catch (e) {
           console.warn('检查云端时间戳失败，继续上传:', e);
         }
+
+        // 2.6 上传前检查：防止“本地缺少部分班级”覆盖云端完整多班级数据
+        try {
+          const rows = await this.fetchUserDataViaRest(String(this.currentUserId || ''));
+          if (rows && rows.length > 0) {
+            let cloudData = rows[0].data;
+            if (typeof cloudData === 'string') {
+              try { cloudData = JSON.parse(cloudData); } catch (e) {}
+            }
+            if (cloudData && typeof cloudData === 'object') {
+              const localClasses = (userData && Array.isArray(userData.classes)) ? userData.classes : [];
+              const cloudClasses = Array.isArray(cloudData.classes) ? cloudData.classes : [];
+              const localMeaningfulClassCount = localClasses.filter(c => Array.isArray(c.students) && c.students.length > 0).length;
+              const cloudMeaningfulClassCount = cloudClasses.filter(c => Array.isArray(c.students) && c.students.length > 0).length;
+              if (localMeaningfulClassCount > 0 && cloudMeaningfulClassCount > localMeaningfulClassCount) {
+                console.warn('⚠️ 上传保护：本地有效班级少于云端，拒绝上传覆盖', {
+                  localMeaningfulClassCount,
+                  cloudMeaningfulClassCount
+                });
+                if (statusEl) statusEl.textContent = `云同步状态：检测到云端班级更多（云端${cloudMeaningfulClassCount}个，本地${localMeaningfulClassCount}个），请先点「从云端恢复」`; 
+                this.syncing = false;
+                if (btnUpload) btnUpload.disabled = false;
+                if (btnDownload) btnDownload.disabled = false;
+                return false;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('检查云端班级数量失败，继续上传:', e);
+        }
         
         // 3. 数据压缩（减少传输量）
         const compressedData = this.compressUserData(userData);
@@ -3028,16 +3058,27 @@
         return false;
       }
       
-      // 手动强制恢复模式：只要云端有数据就覆盖
+      // 手动强制恢复模式：仍需做基础安全校验，避免把“缺班级”的异常云端覆盖本地
       if (forceOverwrite) {
         const cloudClasses = (cloudData.classes && Array.isArray(cloudData.classes)) ? cloudData.classes : [];
-        const cloudHasData = cloudClasses.some(c => Array.isArray(c.students) && c.students.length > 0);
-        if (cloudHasData) {
-          console.log('✅ 强制恢复模式：云端有数据，允许覆盖本地');
-          return true;
+        const localClasses = (localData && localData.classes && Array.isArray(localData.classes)) ? localData.classes : [];
+        const cloudMeaningfulClasses = cloudClasses.filter(c => Array.isArray(c.students) && c.students.length > 0);
+        const localMeaningfulClasses = localClasses.filter(c => Array.isArray(c.students) && c.students.length > 0);
+        const cloudHasData = cloudMeaningfulClasses.length > 0;
+        if (!cloudHasData) {
+          console.warn('⚠️ 强制恢复模式：云端无学生数据，拒绝覆盖');
+          return false;
         }
-        console.warn('⚠️ 强制恢复模式：云端无学生数据，拒绝覆盖');
-        return false;
+        // 手动恢复也保护：云端有效班级比本地少时，拒绝覆盖，防止多班级被回滚丢失
+        if (localMeaningfulClasses.length > cloudMeaningfulClasses.length) {
+          console.warn('⚠️ 强制恢复保护：云端有效班级少于本地，拒绝覆盖', {
+            localMeaningfulClassCount: localMeaningfulClasses.length,
+            cloudMeaningfulClassCount: cloudMeaningfulClasses.length
+          });
+          return false;
+        }
+        console.log('✅ 强制恢复模式：云端数据通过安全校验，允许覆盖本地');
+        return true;
       }
       
       // 校验云端数据完整性
@@ -3086,6 +3127,16 @@
         return true;
       }
       
+      // 保护2.5：本地和云端都有数据时，若云端有效班级数明显少于本地，拒绝覆盖（防止多班级丢失）
+      if (localHasData && cloudHasData) {
+        const localMeaningfulClassCount = localClasses.filter(c => Array.isArray(c.students) && c.students.length > 0).length;
+        const cloudMeaningfulClassCount = cloudClasses.filter(c => Array.isArray(c.students) && c.students.length > 0).length;
+        if (cloudMeaningfulClassCount < localMeaningfulClassCount) {
+          console.log('⚠️ 保护2.5：云端有效班级少于本地（本地:', localMeaningfulClassCount, '云端:', cloudMeaningfulClassCount, '），拒绝覆盖');
+          return false;
+        }
+      }
+
       // 保护3：本地和云端都有数据，比较时间戳
       if (localHasData && cloudHasData) {
         const localTs = localData && localData.lastModified ? new Date(localData.lastModified).getTime() : 0;
